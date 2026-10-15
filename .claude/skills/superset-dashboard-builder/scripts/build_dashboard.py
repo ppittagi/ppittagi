@@ -182,6 +182,8 @@ class Applier:
                 raise KeyError(f"chart {key!r}: unknown dataset key {ds_key!r}")
             ds_id = self.dataset_ids[ds_key]
             cspec = dict(chart)
+            if cspec.get("annotations"):
+                cspec["annotations"] = self._resolve_annotations(key, cspec["annotations"])
             if dash_scheme and not cspec.get("color_scheme"):
                 cspec["color_scheme"] = dash_scheme
             if dash_default_colors and not cspec.get("label_colors"):
@@ -212,6 +214,32 @@ class Applier:
                 cuuid = self.c.chart(cid).get("uuid")
                 log(f"[chart] {key}: created #{cid} ({chart['viz_type']})")
             self.charts[key] = {"id": cid, "uuid": cuuid, "name": name, "dataset_id": ds_id, "params": params}
+
+    def _resolve_annotations(self, key: str, annotations: list[dict]) -> list[dict]:
+        """Create native annotation layers (+ their interval/event annotations) referenced by a chart."""
+        out = []
+        for a in annotations:
+            a = dict(a)
+            if str(a.get("type", "formula")).lower() in ("interval", "event"):
+                layer_name = a.get("layer") or a.get("name") or f"{key} annotations"
+                if self.dry or not self.c:
+                    a["layer_id"] = self._fake_id()
+                else:
+                    layer = self.c.annotation_layer_by_name(layer_name)
+                    if not layer:
+                        layer = self.c.create_annotation_layer(layer_name, a.get("description", ""))
+                        log(f"[annotation] created layer '{layer_name}' #{layer['id']}")
+                    existing = {(x.get("short_descr"), str(x.get("start_dttm"))[:10]) for x in self.c.annotations(layer["id"])}
+                    for iv in a.get("intervals", []):
+                        label = iv.get("label", a.get("name", layer_name))
+                        if (label, str(iv["start"])[:10]) in existing:
+                            continue
+                        self.c.create_annotation(layer["id"], label, f"{iv['start']}T00:00:00",
+                                                 f"{iv.get('end', iv['start'])}T00:00:00", iv.get("description", ""))
+                        log(f"[annotation] '{layer_name}': {label} {iv['start']} .. {iv.get('end', iv['start'])}")
+                    a["layer_id"] = layer["id"]
+            out.append(a)
+        return out
 
     def _match_chart(self, key: str, name: str, ds_id: int) -> Optional[dict]:
         """

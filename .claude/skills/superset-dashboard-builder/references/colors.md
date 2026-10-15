@@ -62,7 +62,7 @@ There is **no built-in "Tableau 10" scheme**. Options:
 `linear_color_scheme` ids: `blue_white_yellow`, `fire`, `white_black`, `black_white`, `dark_blue`,
 `pink_grey`, `greens`, `purples`, `oranges`, `red_yellow_blue`, `brown_white_green`,
 `purple_white_green`, `schemeBlues`, `schemeGreens`, `schemeReds`, `schemeOranges`, `schemePurples`,
-`schemeGreys`, `schemeViridis`, `schemeInferno`, `schemeMagma`, `schemePlasma`, `schemeRdYlBu`,
+`schemeGreys`, `schemeViridis`, `schemeInferno`, `schemeMagma`, `schemeRdYlBu`,
 `schemeRdBu`, `schemePRGn`, `schemeBrBG`, `schemeYlOrRd`, `schemeYlGnBu`, `superset_seq_1`,
 `superset_seq_2`. Tableau "Blue" ≈ `schemeBlues`, "Orange-Blue diverging" ≈ `schemeRdYlBu`
 (reversed via `value_bounds`/`normalize`), "Red-Green" ≈ `schemeRdYlGn` if present, else `red_yellow_blue`.

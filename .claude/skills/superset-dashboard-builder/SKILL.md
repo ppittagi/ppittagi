@@ -124,6 +124,7 @@ keep YAML keys and Superset terms in English.
 | `references/native-filters.md` | native_filter_configuration schema, defaults, cascading, scopes, cross-filters |
 | `references/colors.md` | Tableau palettes (hex), Superset schemes, label_colors, themes, CSS |
 | `assets/spec.example.yaml` | complete clinical-trial example: 2 datasets, 7 charts, 3 tabs, 5 filters |
+| `assets/examples/*.yaml` | Tableau Public reproductions: home-sales (box plot + coloured bars + filters), wow-survey (donuts, Likert diverging bars, rank matrix), ridgeline-customers (overlaid densities + cell-bar table), global-temperatures (calendar heatmap, colour-by-value scatter, shaded baseline annotation) |
 
 ## Scripts
 

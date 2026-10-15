@@ -171,8 +171,10 @@ top only. For a diverging scale centred on 0 set `value_bounds: [-m, m]` with `s
 `linear_color_scheme` ids: `blue_white_yellow`, `fire`, `white_black`, `black_white`, `dark_blue`,
 `pink_grey`, `greens`, `purples`, `oranges`, `red_yellow_blue`, `brown_white_green`, `purple_white_green`,
 `schemeBlues`, `schemeGreens`, `schemeReds`, `schemeOranges`, `schemePurples`, `schemeGreys`,
-`schemeViridis`, `schemeInferno`, `schemeMagma`, `schemePlasma`, `schemeRdYlBu`, `schemeRdBu`,
-`schemePRGn`, `schemeBrBG`, `schemeYlOrRd`, `schemeYlGnBu`, `superset_seq_1`, `superset_seq_2`.
+`schemeViridis`, `schemeInferno`, `schemeMagma`, `schemeRdYlBu`, `schemeRdBu`, `schemeRdYlGn`, `schemeSpectral`,
+`schemePRGn`, `schemeBrBG`, `schemePiYG`, `schemePuOr`, `schemeYlOrRd`, `schemeYlGnBu`, `schemePuRd`, `schemeRdPu`,
+`schemeBuPu`, `schemeGnBu`, `schemeOrRd`, `superset_seq_1`, `superset_seq_2` (no Plasma/Cividis: an unknown id silently
+falls back to the default blue-green ramp, so check the legend after the first apply).
 
 ### `box_plot`
 ```json
@@ -256,6 +258,29 @@ sorts the labels in the right order. SQLite: `substr(replace(hex(zeroblob(n-1)),
 PostgreSQL: `repeat(chr(8203), n-1) || label`. Then `sort: {x: asc}` (index sort). The same trick
 orders series/legend entries (stack order) — see `assets/examples/wow-survey.yaml` for a diverging
 Likert bar built this way. Remember `label_colors` keys must then contain the same prefixes.
+
+Charts sorted in the **browser** (heatmap_v2 axes) use locale collation, which ignores zero-width
+spaces: there use plain leading spaces instead (`substr('           ', 1, 12 - month) || month_name`,
+`sort_y_axis: alpha_desc` puts January on top — see `assets/examples/global-temperatures.yaml`).
+
+## Colour by value on a scatter (Tableau continuous colour)
+
+XY charts colour by series only. Bucket the measure into bands in the dataset SQL
+(`CASE WHEN anomaly < -0.6 THEN '< -0.6' … END AS band`), `groupby: [band]`, pin one colour per band
+with `label_colors`, `legend: false`. Points keep their exact y value; only the colour is quantised.
+
+## Reference lines and shaded periods (spec `annotations:`)
+
+```yaml
+annotations:
+  - {type: formula, name: Median, value: "y = 0", style: dashed, color: "#9E9E9E"}
+  - {type: interval, name: Baseline, layer: "Baseline period 1961-1990", color: "#E8DEC2", opacity: medium,
+     intervals: [{start: "1961-01-01", end: "1990-12-31", label: "Relative to 1961-1990 avg"}]}
+```
+`formula` lines need no server object. `interval`/`event` annotations live in a native annotation
+layer (`/api/v1/annotation_layer/`): `build_dashboard.py` creates the layer and its annotations
+(idempotent by label + start date) and fills `layer_id` before the chart is created. XY charts only
+(bar/line/area/scatter/mixed); bubble_v2, pie, heatmap have no annotation layers.
 
 ## Diverging stacked bar (Likert) — no native chart
 

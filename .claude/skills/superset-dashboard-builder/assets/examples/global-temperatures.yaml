@@ -1,0 +1,97 @@
+# Reproduction of the Tableau "Global Temperatures" (Makeover Monday, HadCRUT4) dashboard:
+# a year x month heatmap of temperature anomalies, a monthly scatter coloured by the anomaly with a
+# dashed zero line and the shaded 1961-1990 baseline period, and a date-range filter.
+# Table: global_temps(date, year, month, month_name, anomaly)
+
+dashboard:
+  title: Global Temperatures
+  slug: global-temperatures
+  published: true
+  color_scheme: supersetColors
+  cross_filters: false
+  label_colors:                        # scatter colour-by-value: one series per anomaly band
+    "< -0.6": "#5B3F9E"
+    "-0.6 to -0.4": "#8E5BA6"
+    "-0.4 to -0.2": "#C65F8F"
+    "-0.2 to 0": "#E76F74"
+    "0 to +0.2": "#F3975A"
+    "+0.2 to +0.4": "#F6B24A"
+    "+0.4 to +0.6": "#E85C4A"
+    "> +0.6": "#C0273A"
+
+datasets:
+  - key: temps
+    database: clinical
+    table: v_global_temps
+    sql: |
+      SELECT date, year, month, month_name, anomaly,
+             -- heatmap axes are sorted in the browser (locale collation ignores zero-width spaces), so use
+             -- plain leading spaces as an invisible order key: December gets 11, January none; with
+             -- sort_y_axis: alpha_desc January is drawn on top (verified on 7.0rc1)
+             substr('           ', 1, 12 - month) || month_name AS month_ordered,
+             CASE WHEN anomaly < -0.6 THEN '< -0.6'
+                  WHEN anomaly < -0.4 THEN '-0.6 to -0.4'
+                  WHEN anomaly < -0.2 THEN '-0.4 to -0.2'
+                  WHEN anomaly < 0    THEN '-0.2 to 0'
+                  WHEN anomaly < 0.2  THEN '0 to +0.2'
+                  WHEN anomaly < 0.4  THEN '+0.2 to +0.4'
+                  WHEN anomaly < 0.6  THEN '+0.4 to +0.6'
+                  ELSE '> +0.6' END AS band
+      FROM global_temps
+    main_dttm_col: date
+    columns:
+      - {column_name: date, is_dttm: true, verbose_name: Date}
+
+charts:
+  - key: heatmap
+    name: Difference from median global temperature (°C)
+    dataset: temps
+    viz_type: heatmap_v2
+    x: year
+    groupby: [month_ordered]
+    metrics: [{col: anomaly, agg: AVG, label: Anomaly}]
+    linear_color_scheme: schemeMagma       # purple -> red -> orange; Superset ships the d3 sequential schemes only
+    y_format: "+.2f"
+    time_column: date
+    extra: {show_values: false, show_percentage: false, legend_type: continuous, normalize_across: heatmap,
+            value_bounds: [-1, 1], left_margin: 90, bottom_margin: 40, xscale_interval: 10, yscale_interval: 1,
+            sort_x_axis: alpha_asc, sort_y_axis: alpha_desc, x_axis_time_format: "%Y"}
+
+  - key: scatter
+    name: Difference from median temperature (°C)
+    dataset: temps
+    viz_type: echarts_timeseries_scatter
+    x: date
+    time_grain: P1M
+    metrics: [{col: anomaly, agg: AVG, label: Anomaly}]
+    groupby: [band]
+    legend: false
+    y_title: Difference from median temperature (°C)
+    y_format: "+.1f"
+    x_format: "%Y"
+    annotations:
+      - {type: formula, name: Median, value: "y = 0", style: dashed, color: "#9E9E9E"}
+      - {type: interval, name: Relative to 1961-1990 avg, layer: Baseline period 1961-1990, color: "#E8DEC2",
+         opacity: medium, intervals: [{start: "1961-01-01", end: "1990-12-31", label: "Relative to 1961-1990 avg"}]}
+    extra: {markerSize: 4, y_axis_bounds: [-1.0, 1.1], truncateYAxis: true, zoomable: false, sort_series_type: name}
+
+layout:
+  rows:
+    - [ {chart: heatmap, width: 12, height: 55} ]
+    - [ {chart: scatter, width: 12, height: 58} ]
+
+filters:
+  - name: Select date
+    type: time
+    default: "1850-01-01 : 2016-04-01"
+  - name: Highlight Month                # Tableau "highlight" parameters have no equivalent: select filters instead
+    type: select
+    column: month_name
+    datasets: [temps]
+    multi: true
+  - name: Highlight Year
+    type: select
+    column: year
+    datasets: [temps]
+    multi: true
+    search_all: true

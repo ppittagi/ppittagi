@@ -35,6 +35,10 @@ Spec shape (YAML/JSON, see assets/spec.example.yaml):
   row_limit: 1000
   color_scheme: supersetColors
   label_colors: {Seoul: "#4E79A7", Busan: "#F28E2B"}   # exact series colors
+  annotations:             # XY charts: reference lines and shaded periods
+    - {type: formula, name: Median, value: "y = 0", style: dashed, color: "#999999"}
+    - {type: interval, name: Baseline, layer: "Baseline period", color: "#E8DEC2", opacity: medium,
+       intervals: [{start: "1961-01-01", end: "1990-12-31", label: "Relative to 1961-1990 avg"}]}
   extra: {}                # raw form_data keys merged last (full control)
 
 Python API:
@@ -282,6 +286,28 @@ def temporal_filter(col: str, time_range: str = "No filter") -> dict:
             "filterOptionName": f"filter_time_{_slug(col)}"}
 
 
+def annotation_layer(a: dict) -> dict:
+    """
+    Spec -> Superset annotation layer entry.
+      {type: formula, name: Median, value: "y = 0", style: dashed, color: "#999999", width: 1}
+      {type: interval|event, name: Baseline, layer: "<annotation layer name>", color: "#E8DEC2",
+       opacity: low|medium|high, intervals: [{start: 1961-01-01, end: 1990-12-31, label: "..."}]}
+    `layer_id` is filled in by build_dashboard (it creates the layer + annotations through the API).
+    """
+    kind = str(a.get("type", "formula")).upper()
+    entry: dict[str, Any] = {
+        "name": a.get("name", kind.title()), "annotationType": kind,
+        "sourceType": "" if kind == "FORMULA" else "NATIVE",
+        "value": a.get("value", "") if kind == "FORMULA" else a.get("layer_id"),
+        "overrides": {"time_range": None}, "show": True, "showLabel": bool(a.get("show_label", False)),
+        "titleColumn": "", "descriptionColumns": [], "timeColumn": "", "intervalEndColumn": "",
+        "color": a.get("color"), "opacity": {"low": "opacityLow", "medium": "opacityMedium", "high": "opacityHigh"}.get(
+            str(a.get("opacity", "")).lower(), ""),
+        "style": a.get("style", "solid"), "width": a.get("width", 1), "showMarkers": False, "hideLine": False,
+    }
+    return entry
+
+
 # --------------------------------------------------------------------------- #
 # params builder
 # --------------------------------------------------------------------------- #
@@ -526,6 +552,10 @@ def build_params(spec: dict, dataset_id: Optional[int] = None) -> dict:
             # horizontal bars: ECharts draws the first category at the bottom, so flip to keep
             # "asc" = first value on top (reading order), like the metric sort above
             p["x_axis_sort_asc"] = (not asc) if spec.get("orientation") == "horizontal" else asc
+
+    # ---- annotations (XY charts): formula lines, native interval/event layers --------------
+    if spec.get("annotations") and viz in XY_TYPES:
+        p["annotation_layers"] = [annotation_layer(a) for a in spec["annotations"]]
 
     # ---- escape hatch ------------------------------------------------------------
     for k, v in (spec.get("extra") or {}).items():

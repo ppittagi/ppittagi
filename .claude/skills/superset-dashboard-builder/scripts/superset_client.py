@@ -424,6 +424,31 @@ class SupersetClient:
             time.sleep(3)
         return None
 
+    # ---- annotation layers (interval / event annotations on XY charts) ------ #
+    def annotation_layers(self) -> list[dict]:
+        return self.list_all("/api/v1/annotation_layer/")
+
+    def annotation_layer_by_name(self, name: str) -> Optional[dict]:
+        for layer in self.list_all("/api/v1/annotation_layer/", [("name", "eq", name)]):
+            return layer
+        return None
+
+    def create_annotation_layer(self, name: str, descr: str = "") -> dict:
+        res = self.post("/api/v1/annotation_layer/", {"name": name, "descr": descr})
+        return {"id": res["id"], **res.get("result", {})}
+
+    def annotations(self, layer_id: int) -> list[dict]:
+        return self.list_all(f"/api/v1/annotation_layer/{layer_id}/annotation/")
+
+    def create_annotation(self, layer_id: int, short_descr: str, start_dttm: str, end_dttm: str,
+                          long_descr: str = "", json_metadata: Optional[dict] = None) -> dict:
+        body: dict[str, Any] = {"short_descr": short_descr, "start_dttm": start_dttm, "end_dttm": end_dttm,
+                                "long_descr": long_descr}
+        if json_metadata:
+            body["json_metadata"] = json.dumps(json_metadata)
+        res = self.post(f"/api/v1/annotation_layer/{layer_id}/annotation/", body)
+        return {"id": res["id"], **res.get("result", {})}
+
     # ---- themes (6.0+) ---------------------------------------------------- #
     def themes(self) -> list[dict]:
         return self.list_all("/api/v1/theme/")

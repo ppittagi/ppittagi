@@ -70,6 +70,10 @@ types — prefer SQL.
 | Filled map / symbol map | `country_map` / `world_map` / `deck_scatter` | needs ISO codes or lat/lon |
 | Gantt (visit windows) | `gantt` (7.0) or `echarts_timeseries_bar` horizontal with start/end virtual dataset | |
 | Text object / notes | `layout` `markdown` row | |
+| Reference line / band, shaded period | `annotations:` on XY charts (formula line, native interval layer) | see chart-params.md |
+| Continuous colour on marks (scatter) | band column in SQL + `groupby: [band]` + `label_colors` | |
+| Year × month heatmap (calendar) | `heatmap_v2`, `x: year`, `groupby: [month label with space prefix]`, `xscale_interval` | |
+| Highlight parameters | no equivalent; `select` filters are the nearest (they filter, not highlight) | |
 
 Quarter labels: d3 has no quarter directive, so `QUARTER(d)` as "2023-Q1" needs a calculated column in
 the dataset (`strftime('%Y', d) || '-Q' || ((CAST(strftime('%m', d) AS INT) + 2) / 3)`) used as a
