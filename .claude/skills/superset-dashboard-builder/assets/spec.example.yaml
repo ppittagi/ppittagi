@@ -1,0 +1,164 @@
+# Example dashboard spec (clinical-trial flavoured). Apply with:
+#   python scripts/build_dashboard.py assets/spec.example.yaml --validate
+# Everything is idempotent: datasets are matched by table name, charts by name, dashboard by slug.
+
+superset:
+  url: http://localhost:8088        # or SUPERSET_URL env; username/password from env
+
+dashboard:
+  title: Study Enrollment & Safety
+  slug: study-enrollment-safety
+  published: true
+  color_scheme: supersetColors        # dashboard-wide categorical palette (see references/colors.md)
+  label_colors:                       # exact colours per series label (Tableau 10 values here)
+    Seoul: "#4E79A7"
+    Busan: "#F28E2B"
+    Tokyo: "#E15759"
+    Osaka: "#76B7B2"
+    Taipei: "#59A14F"
+    Placebo: "#BAB0AC"
+    Low dose: "#EDC948"
+    High dose: "#B07AA1"
+  cross_filters: true                 # click a bar -> filters other charts (Tableau "Use as filter")
+  filter_bar_orientation: vertical    # vertical | horizontal
+  refresh_frequency: 0
+
+datasets:
+  - key: subjects
+    database: clinical                # database id or display name in Superset
+    schema: null
+    table: subjects                   # physical table ...
+    main_dttm_col: enrolled_date
+    columns:
+      - {column_name: enrolled_date, is_dttm: true, verbose_name: Enrolled date}
+      - {column_name: site, verbose_name: Site}
+    metrics:
+      - {metric_name: n_subjects, expression: "COUNT(DISTINCT subject_id)", verbose_name: Subjects, d3format: ",d"}
+  - key: ae
+    database: clinical
+    table: v_adverse_events           # ... or a virtual dataset from SQL
+    sql: |
+      SELECT ae_id, subject_id, site, soc, grade, serious, onset_date,
+             CASE WHEN grade >= 3 THEN 'Grade 3+' ELSE 'Grade 1-2' END AS grade_group
+      FROM adverse_events
+    main_dttm_col: onset_date
+
+charts:
+  - key: kpi_enrolled
+    name: Enrolled subjects
+    dataset: subjects
+    viz_type: big_number_total
+    metrics: [n_subjects]
+    filters:
+      - {col: status, op: IN, val: [Enrolled, Completed]}
+    subheader: enrolled or completed
+    time_column: enrolled_date        # lets a dashboard *time* filter reach this chart
+
+  - key: kpi_sae
+    name: Serious AEs
+    dataset: ae
+    viz_type: big_number_total
+    metrics: [{col: ae_id, agg: COUNT, label: SAEs}]
+    filters: ["serious = 1"]
+    time_column: onset_date
+
+  - key: enrollment_trend
+    name: Monthly enrollment by site
+    dataset: subjects
+    viz_type: echarts_timeseries_bar
+    x: enrolled_date
+    time_grain: P1M
+    metrics: [n_subjects]
+    groupby: [site]
+    stack: true
+    show_value: false
+    legend: {show: true, position: top}
+    x_title: Month
+    y_title: Subjects
+    y_format: ",d"
+
+  - key: status_pie
+    name: Subject status
+    dataset: subjects
+    viz_type: pie
+    metrics: [n_subjects]
+    groupby: [status]
+    donut: true
+    time_column: enrolled_date
+
+  - key: ae_by_soc
+    name: AEs by system organ class
+    dataset: ae
+    viz_type: echarts_timeseries_bar
+    x: soc
+    metrics: [{col: ae_id, agg: COUNT, label: AEs}]
+    groupby: [grade_group]
+    orientation: horizontal
+    stack: true
+    show_value: true
+    sort: {metric: AEs, desc: true}
+    label_colors: {"Grade 1-2": "#8CD17D", "Grade 3+": "#E15759"}
+    time_column: onset_date
+
+  - key: ae_heatmap
+    name: AE grade by site
+    dataset: ae
+    viz_type: heatmap_v2
+    x: site
+    groupby: [grade]
+    metrics: [{col: ae_id, agg: COUNT, label: AEs}]
+    linear_color_scheme: blue_white_yellow
+    time_column: onset_date
+
+  - key: site_table
+    name: Site summary
+    dataset: subjects
+    viz_type: table
+    groupby: [site, country]
+    metrics:
+      - n_subjects
+      - {col: age, agg: AVG, label: Mean age}
+    sort: {metric: n_subjects, desc: true}
+    time_column: enrolled_date
+
+layout:
+  tabs:
+    - title: Overview
+      rows:
+        - [ {chart: kpi_enrolled, width: 3, height: 25}, {chart: kpi_sae, width: 3, height: 25},
+            {chart: status_pie, width: 6, height: 25} ]
+        - [ {chart: enrollment_trend, width: 12, height: 55} ]
+    - title: Safety
+      rows:
+        - header: Adverse events
+        - [ {chart: ae_by_soc, width: 7, height: 55}, {chart: ae_heatmap, width: 5, height: 55} ]
+    - title: Sites
+      rows:
+        - [ {chart: site_table, width: 12, height: 60} ]
+
+filters:
+  - name: Site
+    type: select
+    column: site                     # same column name in both datasets -> one filter drives all charts
+    datasets: [subjects, ae]
+    multi: true
+    search_all: true
+  - name: Country
+    type: select
+    column: country
+    datasets: [subjects]             # only `subjects` has country; AE charts are auto-excluded
+  - name: Arm
+    type: select
+    column: arm
+    datasets: [subjects]
+    depends_on: [Site]               # cascading: options narrow to the selected sites
+  - name: Period
+    type: time
+    default: "No filter"             # e.g. "Last year", "2025-01-01 : 2025-12-31"
+  - type: divider
+    title: Safety
+  - name: AE grade
+    type: range
+    column: grade
+    datasets: [ae]
+    scope: {tabs: [Safety]}          # only charts on the Safety tab
