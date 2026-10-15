@@ -1,0 +1,193 @@
+# Reproduction of a LOW-RESOLUTION thumbnail collage of five Tableau Public dashboards (one tab each).
+# Only what is legible at thumbnail size is reproduced: chart form, colour family, rough layout.
+# Numbers, labels and exact filters were NOT readable, so sample tables stand in for the data:
+#   superstore + state_codes (US state maps), calendar_heat (row x month heatmap), house_bars (sorted bars),
+#   viz_gallery (table with cell bars), trend_points (weighted scatter with a precomputed trend line).
+
+dashboard:
+  title: Tableau Public thumbnails
+  slug: public-gallery
+  published: true
+  color_scheme: ""                     # no dashboard-wide categorical scheme: it would recolour the country maps by region
+  cross_filters: true
+  label_colors:
+    Sales: "#4E79A7"
+    Profit: "#E15759"
+    Views: "#1F8A9E"
+    Favourites: "#1F8A9E"
+    large: "#2CA02C"
+    small: "#1F4E9E"
+    Trend: "#F2B134"
+    "1998-1999": "#F2B134"
+    "1999-2000": "#F2B134"
+
+datasets:
+  - key: superstore_states
+    database: clinical
+    table: v_superstore_states
+    sql: |
+      SELECT s.state, c.code AS state_code, s.region, s.category, s.sales, s.profit, s.quantity, s.discount, s.order_date
+      FROM superstore s JOIN state_codes c ON c.state = s.state
+    main_dttm_col: order_date
+  - key: heat
+    database: clinical
+    table: v_calendar_heat
+    sql: |
+      -- heatmap axes are sorted in the browser: leading spaces (Jan = 11, Dec = 0) keep calendar order left to right
+      SELECT row_label, row_order, month, substr('           ', 1, 12 - month) || month_name AS month_name, value
+      FROM calendar_heat
+  - key: bars
+    database: clinical
+    table: house_bars
+  - key: gallery
+    database: clinical
+    table: viz_gallery
+    main_dttm_col: first_published
+    columns:
+      - {column_name: first_published, is_dttm: true, verbose_name: First Published}
+      - {column_name: title, verbose_name: Title}
+      - {column_name: rank, verbose_name: Rank}
+  - key: trend
+    database: clinical
+    table: trend_points
+
+charts:
+  # ---- tab 1: four small-multiple US state maps (one metric each) ----
+  - key: map_sales
+    name: Sales by state
+    dataset: superstore_states
+    viz_type: country_map
+    country: usa
+    entity: state_code
+    metrics: [{col: sales, agg: SUM, label: Sales}]
+    linear_color_scheme: schemeBlues
+    time_column: order_date
+  - key: map_profit
+    name: Profit by state
+    dataset: superstore_states
+    viz_type: country_map
+    country: usa
+    entity: state_code
+    metrics: [{col: profit, agg: SUM, label: Profit}]
+    linear_color_scheme: schemeReds
+    time_column: order_date
+  - key: map_qty
+    name: Quantity by state
+    dataset: superstore_states
+    viz_type: country_map
+    country: usa
+    entity: state_code
+    metrics: [{col: quantity, agg: SUM, label: Quantity}]
+    linear_color_scheme: schemePurples
+    time_column: order_date
+  - key: map_disc
+    name: Avg discount by state
+    dataset: superstore_states
+    viz_type: country_map
+    country: usa
+    entity: state_code
+    metrics: [{col: discount, agg: AVG, label: Discount}]
+    linear_color_scheme: schemeOranges
+    time_column: order_date
+  - key: region_bars
+    name: Sales by region
+    dataset: superstore_states
+    viz_type: echarts_timeseries_bar
+    x: region
+    metrics: [{col: sales, agg: SUM, label: Sales}]
+    orientation: horizontal
+    sort: {metric: Sales, desc: true}
+    legend: false
+    y_format: "$.3~s"
+    time_column: order_date
+
+  # ---- tab 2: row x month heatmap, diverging purple/green ----
+  - key: calendar
+    name: Monthly values (diverging)
+    dataset: heat
+    viz_type: heatmap_v2
+    x: month_name
+    groupby: [row_label]
+    metrics: [{col: value, agg: SUM, label: Value}]
+    linear_color_scheme: schemePRGn
+    y_format: "+.1f"
+    extra: {show_values: false, legend_type: continuous, normalize_across: heatmap, value_bounds: [-2.5, 2.5],
+            left_margin: 80, sort_x_axis: alpha_asc, sort_y_axis: alpha_desc, yscale_interval: 1}
+
+  # ---- tab 3: "A new House for Little Mouse" - long sorted bar list, first bars highlighted ----
+  - key: house
+    name: A new House for Little Mouse
+    dataset: bars
+    viz_type: echarts_timeseries_bar
+    x: label
+    metrics: [{col: value, agg: SUM, label: Value}]   # single series: keeps the value sort (a per-bar highlight would lose it)
+    orientation: horizontal
+    sort: {metric: Value, desc: true}
+    show_value: true
+    legend: false
+    y_format: ",.1f"
+    label_colors: {Value: "#F2B134"}
+    extra: {y_axis_title_margin: 30}
+
+  # ---- tab 4: viz list with trophies and in-cell bars ----
+  - key: gallery_table
+    name: Tableau Public vizzes
+    dataset: gallery
+    viz_type: table
+    query_mode: raw
+    columns: [title, first_published, rank, views, favourites]
+    sort: {column: views, desc: true}
+    extra:
+      show_cell_bars: true
+      align_pn: false
+      color_pn: false
+      column_config:
+        views: {d3NumberFormat: ",d"}
+        favourites: {d3NumberFormat: ",d"}
+        first_published: {d3TimeFormat: "%b %d, %Y"}
+
+  # ---- tab 5: weighted scatter + polynomial trend line (precomputed `fitted`) ----
+  - key: trend_scatter
+    name: Weighted trend
+    dataset: trend
+    viz_type: mixed_timeseries
+    x: x
+    metrics: [{col: y, agg: MAX, label: Points}]
+    groupby: [grp]
+    kind: scatter
+    b:
+      metrics: [{col: fitted, agg: AVG, label: Trend}]
+      kind: smooth
+      secondary_axis: false
+      markers: false
+    legend: {show: true, position: bottom}
+    x_title: x
+    y_title: y
+    extra: {markerSize: 10, xAxisForceCategorical: false, truncateXAxis: false, opacityB: 0, markerEnabled: true}
+
+layout:
+  tabs:
+    - title: State maps
+      rows:
+        - charts: [ {chart: map_sales, width: 3, height: 40}, {chart: map_profit, width: 3, height: 40},
+                    {chart: map_qty, width: 3, height: 40}, {chart: map_disc, width: 3, height: 40} ]
+          panel: true
+        - [ {chart: region_bars, width: 12, height: 35} ]
+    - title: Calendar heatmap
+      rows: [ [ {chart: calendar, width: 12, height: 70} ] ]
+    - title: Little Mouse
+      rows: [ [ {chart: house, width: 12, height: 80} ] ]
+    - title: Viz list
+      rows: [ [ {chart: gallery_table, width: 12, height: 60} ] ]
+    - title: Weighted trend
+      rows: [ [ {chart: trend_scatter, width: 12, height: 60} ] ]
+
+filters:
+  - name: Region
+    type: select
+    column: region
+    datasets: [superstore_states]
+    scope: {tabs: [State maps]}
+  - name: Order date
+    type: time
+    scope: {tabs: [State maps]}

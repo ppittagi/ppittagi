@@ -205,6 +205,15 @@ TEMPLATES: dict[str, dict[str, Any]] = {
         "adhoc_filters": [], "row_limit": 1000, "sort_by_metric": True, "color_scheme": "supersetColors",
         "extra_form_data": {},
     },
+    "country_map": {  # regional choropleth; `entity` must hold ISO 3166-2 codes (US-CA, KR-11, ...)
+        "select_country": "usa", "adhoc_filters": [], "linear_color_scheme": "schemeBlues",
+        "color_scheme_type": "linear_palette",   # 7.0: fixed_color | linear_palette (categorical_palette on world_map)
+        "number_format": "SMART_NUMBER", "show_legend": True, "extra_form_data": {},
+    },
+    "world_map": {
+        "adhoc_filters": [], "country_fieldtype": "cca3", "max_bubble_size": "25", "show_bubbles": False,
+        "linear_color_scheme": "schemeBlues", "color_by": "metric", "row_limit": 10000, "extra_form_data": {},
+    },
     "word_cloud": {
         "adhoc_filters": [], "row_limit": 100, "size_from": 10, "size_to": 70, "rotation": "square",
         "color_scheme": "supersetColors", "extra_form_data": {},
@@ -370,8 +379,8 @@ def build_params(spec: dict, dataset_id: Optional[int] = None) -> dict:
         if "stack" in spec:
             s = spec["stack"]
             p["stack"] = "Stack" if s is True else (None if s in (False, None) else s)
-        if spec.get("kind") and viz != "mixed_timeseries":
-            p["seriesType"] = spec["kind"]  # line|smooth|start|middle|end|bar|scatter
+        if spec.get("kind"):
+            p["seriesType"] = spec["kind"]  # line|smooth|start|middle|end|bar|scatter (query A for mixed charts)
         if spec.get("area"):
             p["area"] = True
     elif viz in ("pie", "funnel", "treemap_v2", "sunburst_v2", "radar", "word_cloud"):
@@ -465,6 +474,16 @@ def build_params(spec: dict, dataset_id: Optional[int] = None) -> dict:
         p["metric"] = metrics[0] if metrics else None
         if spec.get("time_grain"):
             p["time_grain_sqla"] = spec["time_grain"]
+    elif viz in ("country_map", "world_map"):
+        p["entity"] = spec.get("entity") or (groupby[0] if groupby else None)
+        p["metric"] = metrics[0] if metrics else None
+        if viz == "country_map" and spec.get("country"):
+            p["select_country"] = spec["country"]          # usa, korea, japan, germany, ... (frontend map list)
+        p.pop("color_scheme", None)                         # keep maps on the linear (metric) palette
+        if viz == "world_map" and spec.get("country_format"):
+            p["country_fieldtype"] = spec["country_format"]  # name | cca2 | cca3 | cioc
+        if spec.get("linear_color_scheme"):
+            p["linear_color_scheme"] = spec["linear_color_scheme"]
     elif viz == "sankey_v2":
         p["source"] = spec.get("source") or (groupby[0] if groupby else None)
         p["target"] = spec.get("target") or (groupby[1] if len(groupby) > 1 else None)
@@ -625,6 +644,9 @@ def build_query_context(params: dict, dataset_id: int, row_limit: Optional[int] 
         metrics = [m for m in (p.get("x"), p.get("y"), p.get("size")) if m]
     elif viz == "sankey_v2":
         columns = [p.get("source"), p.get("target")]
+        metrics = [p["metric"]] if p.get("metric") else []
+    elif viz in ("country_map", "world_map"):
+        columns = [p.get("entity")]
         metrics = [p["metric"]] if p.get("metric") else []
     elif viz == "word_cloud":
         columns = [p.get("series")]

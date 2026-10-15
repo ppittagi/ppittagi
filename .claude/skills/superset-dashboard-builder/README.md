@@ -37,7 +37,14 @@ scripts/build_dashboard.py     전체 적용 오케스트레이션 (--dry-run / 
 scripts/screenshot_dashboard.py 로컬 headless Chromium으로 대시보드/탭별 스크린샷 (Tableau 이미지와 비교용)
 references/*.md                API·차트 파라미터·Tableau 매핑·레이아웃·필터·색상 레퍼런스
 assets/spec.example.yaml       임상시험 예제 (데이터셋 2, 차트 7, 탭 3, 필터 5)
+assets/examples/*.yaml         Tableau Public 재현 예제 (home-sales, wow-survey, ridgeline, global-temperatures, public-gallery)
 ```
+
+## 데이터 지정
+
+- 데이터셋은 Superset에 등록된 **데이터베이스 연결**(Data → Databases) 위에 만듭니다: `database: <id 또는 이름>` + 물리 테이블(`schema`, `table`) 또는 가상 SQL(`sql:`).
+- 연결이 없으면 spec의 `databases:` 블록이 등록합니다 (`uri` 또는 `uri_env: 환경변수`). DB 드라이버는 Superset 서버에 설치돼 있어야 합니다.
+- 이미 있는 데이터셋은 `id:`로 그대로 사용합니다. 쿼리는 연결에 저장된 계정으로 실행되므로 spec에 DB 비밀번호를 넣지 않습니다.
 
 ## 로컬 검증
 

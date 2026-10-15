@@ -51,6 +51,21 @@ GET /api/v1/database/{id}/table_metadata/?name=subjects&schema=public   -> colum
 GET /api/v1/datasource/                                 (7.0, combined listing)
 ```
 
+Register a connection (what the UI's Data → Databases → + does); needs the driver on the server:
+```
+POST /api/v1/database/test_connection   {"sqlalchemy_uri":"postgresql://u:p@host:5432/dw","database_name":"DW"}
+POST /api/v1/database/   {"database_name":"Clinical DW","sqlalchemy_uri":"postgresql://u:p@host:5432/dw",
+                          "expose_in_sqllab":true,"extra":"{\"engine_params\":{\"connect_args\":{\"sslmode\":\"require\"}}}",
+                          "allow_dml":false,"impersonate_user":false}
+PUT  /api/v1/database/{id}   (GET returns the uri with the password masked as XXXXXXXXXX; PUT with the
+                              masked value keeps the stored password)
+```
+Spec: `databases: [{name, uri | uri_env, expose_in_sqllab, extra, update}]` — matched by name,
+created when missing, left untouched unless `update: true`. Drivers: `psycopg2` (PostgreSQL),
+`pymssql`/`pyodbc` (SQL Server), `oracledb`, `mysqlclient`, `snowflake-sqlalchemy`, `trino`, …
+must be installed in the Superset image (`pip install` in the Dockerfile), otherwise
+`test_connection` answers "Could not load database driver".
+
 ## Datasets
 
 ```
@@ -64,7 +79,9 @@ PUT  /api/v1/dataset/{id}    {"metrics":[{"metric_name","expression","verbose_na
 PUT  /api/v1/dataset/{id}/refresh      (re-read physical columns)
 ```
 
-Rules: `table_name` is unique per (database, schema). Virtual datasets need `sql`; after changing
+Rules: `table_name` is unique per (database, schema). A dataset always belongs to one database
+connection; a chart reads one dataset, so data from two databases needs two datasets (or a virtual
+dataset on a database that can reach both). Virtual datasets need `sql`; after changing
 `sql` call `/refresh`. When sending `columns`/`metrics` in a PUT, include the existing ones (with `id`)
 you want to keep — the list is replaced, not merged (the scripts handle this). Mark the date column
 `is_dttm: true` and set `main_dttm_col` so time filters and `time_grain` work.

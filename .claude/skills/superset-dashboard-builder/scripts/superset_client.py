@@ -6,6 +6,8 @@ Usage (CLI):
   export SUPERSET_URL=http://localhost:8088 SUPERSET_USERNAME=admin SUPERSET_PASSWORD=admin
   python superset_client.py whoami
   python superset_client.py databases
+  python superset_client.py database test --uri "postgresql://user:pw@host:5432/dw"
+  python superset_client.py database create --name "Clinical DW" --uri "postgresql://user:pw@host:5432/dw"
   python superset_client.py tables --database 1 [--schema public]
   python superset_client.py columns --database 1 --table subjects [--schema public]
   python superset_client.py datasets [--search subj]
@@ -217,6 +219,29 @@ class SupersetClient:
             if db.get("database_name") == name:
                 return db
         return None
+
+    def test_connection(self, sqlalchemy_uri: str, database_name: str = "test", extra: Optional[dict] = None) -> Any:
+        body: dict[str, Any] = {"sqlalchemy_uri": sqlalchemy_uri, "database_name": database_name}
+        if extra:
+            body["extra"] = json.dumps(extra)
+        return self.post("/api/v1/database/test_connection", body)
+
+    def create_database(self, database_name: str, sqlalchemy_uri: str, expose_in_sqllab: bool = True,
+                        extra: Optional[dict] = None, **fields: Any) -> dict:
+        """Register a database connection (Data -> Databases). Needs the DB driver installed on the
+        Superset server; the API user needs `can_write` on Database."""
+        body: dict[str, Any] = {"database_name": database_name, "sqlalchemy_uri": sqlalchemy_uri,
+                                "expose_in_sqllab": expose_in_sqllab,
+                                "extra": json.dumps(extra or {"metadata_params": {}, "engine_params": {},
+                                                             "schemas_allowed_for_file_upload": []})}
+        body.update(fields)   # allow_ctas, allow_cvas, allow_dml, allow_run_async, cache_timeout, impersonate_user, ...
+        res = self.post("/api/v1/database/", body)
+        return {"id": res["id"], **res.get("result", {})}
+
+    def update_database(self, database_id: int, **fields: Any) -> dict:
+        if "extra" in fields and not isinstance(fields["extra"], str):
+            fields["extra"] = json.dumps(fields["extra"])
+        return self.put(f"/api/v1/database/{database_id}", fields)
 
     def schemas(self, database_id: int) -> list[str]:
         return self.get(f"/api/v1/database/{database_id}/schemas/")["result"]
@@ -489,6 +514,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     sub.add_parser("whoami")
     sub.add_parser("version")
     sub.add_parser("databases")
+    s = sub.add_parser("database"); ss = s.add_subparsers(dest="sub", required=True)
+    x = ss.add_parser("test"); x.add_argument("--uri", required=True)
+    x = ss.add_parser("create"); x.add_argument("--name", required=True); x.add_argument("--uri", required=True)
+    x.add_argument("--no-sqllab", action="store_true")
     s = sub.add_parser("tables"); s.add_argument("--database", type=int, required=True); s.add_argument("--schema")
     s = sub.add_parser("columns"); s.add_argument("--database", type=int, required=True)
     s.add_argument("--table", required=True); s.add_argument("--schema")
@@ -538,6 +567,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(c.version() or "unknown")
     elif a.cmd == "databases":
         _print(_slim(c.databases(), ["id", "database_name", "backend", "expose_in_sqllab"]))
+    elif a.cmd == "database":
+        if a.sub == "test":
+            _print(c.test_connection(a.uri))
+        elif a.sub == "create":
+            _print(c.create_database(a.name, a.uri, not a.no_sqllab))
     elif a.cmd == "tables":
         _print(c.tables(a.database, a.schema))
     elif a.cmd == "columns":

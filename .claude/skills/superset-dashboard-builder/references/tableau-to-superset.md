@@ -5,6 +5,17 @@ Use this when the user hands over an image (Tableau worksheet or dashboard). The
 pixel-perfect copy. Work through the checklist per sheet, write down what you inferred, and ask the
 user only for what the image cannot tell you (mostly: table/column names and metric definitions).
 
+## 0. Low-resolution images and thumbnail collages
+
+A Tableau Public gallery thumbnail (or a collage of several) shows chart *forms* and colour
+families but not labels, numbers or filter names. Say so up front, then:
+* inventory each panel by form only (map small multiples, heatmap grid, sorted bars, table with
+  cell bars, scatter with a fitted curve) and give each a tab;
+* ask for the full-size capture or the workbook; until then build the structure on the real
+  dataset the user names, or on clearly labelled sample tables, so the layout and chart types can be
+  reviewed and the data binding swapped later (the spec is idempotent);
+* never invent legible-looking numbers in chart titles or markdown; mark placeholders as such.
+
 ## 1. Inventory the image
 
 For a **dashboard** image, first list the sheets (tiles), their relative sizes (fraction of width
@@ -67,7 +78,8 @@ types — prefer SQL.
 | Funnel (sorted horizontal bars shrinking) | `funnel` | |
 | Gauge / bullet | `gauge_chart` / `bullet` | `min_val`, `max_val`, `intervals` |
 | Treemap | `treemap_v2` | `groupby` = hierarchy |
-| Filled map / symbol map | `country_map` / `world_map` / `deck_scatter` | needs ISO codes or lat/lon |
+| Filled map / symbol map | `country_map` / `world_map` / `deck_scatter` | `country: usa`, `entity` = ISO 3166-2 codes (`US-CA`); join a code table in a virtual dataset when the data has state names |
+| Scatter with a trend line | `mixed_timeseries` (A = scatter, B = smooth line over a precomputed `fitted` column) | Superset draws no regression; fit it in SQL/ETL |
 | Gantt (visit windows) | `gantt` (7.0) or `echarts_timeseries_bar` horizontal with start/end virtual dataset | |
 | Text object / notes | `layout` `markdown` row | |
 | Reference line / band, shaded period | `annotations:` on XY charts (formula line, native interval layer) | see chart-params.md |

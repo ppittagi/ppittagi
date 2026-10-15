@@ -49,6 +49,12 @@ keep YAML keys and Superset terms in English.
 
 3. **Write `spec.yaml`** (start from `assets/spec.example.yaml`; schema in the docstrings of
    `scripts/chart_builder.py` and `scripts/dashboard_builder.py`). Decide:
+   * where the data lives: every dataset names a **database connection registered in Superset**
+     (`database: <id or display name>`), then a physical `schema`/`table` or a virtual `sql:`
+     (joins, CTEs, window functions are fine there). Superset runs the query with the credentials
+     stored on that connection; the API user only needs access to it. If the connection does not
+     exist yet, a `databases:` block registers it (`name`, `uri` or `uri_env: ENV_VAR` so secrets stay
+     out of git). An existing dataset can be reused with `id:` instead of creating one.
    * datasets (physical table or virtual SQL; add `metrics:` for reusable measures, `main_dttm_col`)
    * charts: `viz_type`, `x`, `time_grain`, `metrics`, `groupby`, `filters`, `orientation`, `stack`,
      `sort`, `show_value`, `legend`, titles, formats, `label_colors`, and `time_column` so the

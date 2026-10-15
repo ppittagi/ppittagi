@@ -67,7 +67,7 @@ d3 SI prefixes are lower-case (`$32.5k`); Tableau's `K` cannot be reproduced.
 | Radar | `radar` | `groupby[]`, `metrics[]` | radar |
 | Waterfall | `waterfall` | `x_axis`, `groupby`, `metric` | waterfall |
 | Word cloud | `word_cloud` | `series`, `metric` | word cloud |
-| Maps | `world_map`, `country_map`, `deck_scatter`, `deck_polygon`, `deck_geojson`, `cartodiagram` | entity/country columns, lat/lon | filled map / symbol map |
+| Maps | `country_map` (`select_country: usa`, `entity` = ISO 3166-2 code, `color_scheme_type: linear_palette`), `world_map` (`country_fieldtype` name/cca2/cca3), `deck_scatter`, `deck_polygon`, `deck_geojson` | entity/country columns, lat/lon | filled map / symbol map |
 | Graph | `graph_chart`, `tree_chart` | `source`, `target`, `metric` | — |
 | Text | `handlebars`, markdown layout component | template | text object |
 | Filters (not charts) | `filter_select`, `filter_range`, `filter_time`, `filter_timegrain`, `filter_timecolumn` | used inside `native_filter_configuration` | quick filters |

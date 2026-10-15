@@ -23,9 +23,14 @@ dashboard:
   filter_bar_orientation: vertical    # vertical | horizontal
   refresh_frequency: 0
 
+# databases:                          # optional: register the connection if Superset does not have it yet
+#   - name: clinical                  #   (otherwise just reference the existing one by id or name below)
+#     uri_env: CLINICAL_DB_URI        #   e.g. postgresql://user:pw@host:5432/clinical, read from the environment
+#     expose_in_sqllab: true
+
 datasets:
   - key: subjects
-    database: clinical                # database id or display name in Superset
+    database: clinical                # Superset database connection: id or display name (Data -> Databases)
     schema: null
     table: subjects                   # physical table ...
     main_dttm_col: enrolled_date

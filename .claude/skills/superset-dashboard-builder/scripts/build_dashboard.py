@@ -63,6 +63,40 @@ class Applier:
         self._fake += 1
         return self._fake
 
+    # ---- databases (optional: register the connection itself) ----------------------- #
+    def apply_databases(self) -> None:
+        """
+        databases:
+          - name: Clinical DW                      # the name datasets refer to with `database:`
+            uri: postgresql://user:pw@host/db      # or uri_env: CLINICAL_DW_URI (keeps secrets out of git)
+            expose_in_sqllab: true
+            extra: {engine_params: {connect_args: {sslmode: require}}}
+            update: false                          # true = PUT uri/extra onto an existing connection
+        Existing connections (matched by name) are left untouched unless `update: true`.
+        """
+        for db in self.spec.get("databases", []):
+            name = db["name"]
+            uri = db.get("uri") or (os.environ.get(db["uri_env"]) if db.get("uri_env") else None)
+            if self.dry:
+                log(f"[database] {name}: (dry-run) would register/lookup ({'uri from env ' + db['uri_env'] if db.get('uri_env') else 'uri in spec'})")
+                continue
+            assert self.c
+            found = self.c.database_by_name(name)
+            if found and not db.get("update"):
+                log(f"[database] {name}: found #{found['id']} ({found.get('backend')})")
+                continue
+            if not uri:
+                raise SupersetError(f"database {name!r}: no `uri` (or `uri_env` variable {db.get('uri_env')!r} is unset)")
+            self.c.test_connection(uri, name, db.get("extra"))
+            fields = {k: db[k] for k in ("allow_ctas", "allow_cvas", "allow_dml", "allow_run_async", "cache_timeout",
+                                         "impersonate_user", "allow_file_upload") if k in db}
+            if found:
+                self.c.update_database(found["id"], sqlalchemy_uri=uri, **({"extra": db["extra"]} if db.get("extra") else {}), **fields)
+                log(f"[database] {name}: updated #{found['id']}")
+            else:
+                created = self.c.create_database(name, uri, bool(db.get("expose_in_sqllab", True)), db.get("extra"), **fields)
+                log(f"[database] {name}: registered #{created['id']}")
+
     # ---- datasets ---------------------------------------------------------------- #
     def apply_datasets(self) -> None:
         for ds in self.spec.get("datasets", []):
@@ -97,7 +131,18 @@ class Applier:
                         self.c.refresh_dataset(ds_id)
                         log(f"[dataset] {key}: sql updated + columns refreshed")
             else:
-                created = self.c.create_dataset(db_id, table, schema, ds.get("sql"), ds.get("catalog"))
+                try:
+                    created = self.c.create_dataset(db_id, table, schema, ds.get("sql"), ds.get("catalog"))
+                except SupersetError as e:
+                    elsewhere = self.c.find_dataset(table)
+                    if elsewhere:
+                        raise SupersetError(
+                            f"dataset {key!r}: Superset refused to create {table!r} on database #{db_id}, and a dataset "
+                            f"with that name already exists on database #{elsewhere.get('database', {}).get('id')} "
+                            f"(#{elsewhere['id']}). Superset keeps dataset names unique per (database, schema) on "
+                            f"PostgreSQL/MySQL metadata DBs but globally unique on a SQLite metadata DB. Reuse it with "
+                            f"`id: {elsewhere['id']}`, or create a virtual dataset with a unique name. ({e})") from e
+                    raise
                 ds_id = created["id"]
                 log(f"[dataset] {key}: created #{ds_id} ({table})")
             patch: dict[str, Any] = {}
@@ -184,7 +229,9 @@ class Applier:
             cspec = dict(chart)
             if cspec.get("annotations"):
                 cspec["annotations"] = self._resolve_annotations(key, cspec["annotations"])
-            if dash_scheme and not cspec.get("color_scheme"):
+            # maps colour by metric with linear_color_scheme; a categorical color_scheme on the chart makes
+            # the country map colour each region categorically on the dashboard (seen on 7.0rc1)
+            if dash_scheme and not cspec.get("color_scheme") and chart["viz_type"] not in ("country_map", "world_map"):
                 cspec["color_scheme"] = dash_scheme
             if dash_default_colors and not cspec.get("label_colors"):
                 cspec["label_colors"] = dash_default_colors
@@ -409,6 +456,7 @@ def main() -> int:
             log(f"[state] using ids from {a.state}")
         except (OSError, ValueError):
             app.prev_state = {}
+    app.apply_databases()
     app.apply_datasets()
     if a.only == "datasets":
         return 0
