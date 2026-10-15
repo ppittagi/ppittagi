@@ -28,7 +28,7 @@ Usage (CLI):
   python superset_client.py dashboard import study-kpi.zip [--overwrite]
   python superset_client.py dashboard screenshot 7 --out dash.png
   python superset_client.py raw GET /api/v1/chart/_info
-  python superset_client.py raw POST /api/v1/dashboard/ --json body.json
+  python superset_client.py raw POST /api/v1/dashboard/ --json body.json      # or --json '{"dashboard_title": "x"}' / --json -
 
 Environment:
   SUPERSET_URL        base URL, e.g. http://localhost:8088 (no trailing slash needed)
@@ -437,10 +437,13 @@ class SupersetClient:
 # CLI
 # --------------------------------------------------------------------------- #
 def _load_json(path: Optional[str]) -> Any:
+    """Accepts a file path, '-' for stdin, or an inline JSON literal ('{...}' / '[...]')."""
     if not path:
         return None
     if path == "-":
         return json.load(sys.stdin)
+    if path.lstrip().startswith(("{", "[")):
+        return json.loads(path)
     with open(path, encoding="utf-8") as fh:
         return json.load(fh)
 

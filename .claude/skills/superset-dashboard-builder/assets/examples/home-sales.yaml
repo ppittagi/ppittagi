@@ -1,0 +1,72 @@
+# Reproduction of the Tableau Public "Two Weeks of Home Sales" dashboard
+# (box plot of sale price per city with per-sale points, horizontal bar of homes sold per city,
+#  date-range + home-type filter cards). Table: home_sales(sale_id, sale_date, city, home_type, price).
+
+dashboard:
+  title: Two Weeks of Home Sales
+  slug: home-sales
+  published: true
+  color_scheme: supersetColors
+  label_colors:                       # read from the Tableau legend / bar colours
+    Chicago: "#C0620E"
+    Los Angeles: "#F6D44A"
+    Seattle: "#FF8C1A"
+    Washington DC: "#22B5D8"
+    San Francisco: "#2E7C8E"
+  cross_filters: true
+  filter_bar_orientation: vertical
+
+datasets:
+  - key: sales
+    database: clinical
+    table: home_sales
+    main_dttm_col: sale_date
+    columns:
+      - {column_name: sale_date, is_dttm: true, verbose_name: Sale date}
+      - {column_name: home_type, verbose_name: Home type}
+    metrics:
+      - {metric_name: homes_sold, expression: "COUNT(*)", verbose_name: "# of Homes Sold", d3format: ",d"}
+
+charts:
+  - key: price_box
+    name: Two Weeks of Home Sales
+    dataset: sales
+    viz_type: box_plot
+    x: city                            # one box per city
+    distribute: [sale_id]              # every sale is one point of the distribution
+    metrics: [{col: price, agg: SUM, label: Sale price}]
+    y_format: "$,.0f"
+    x_title: City
+    time_column: sale_date
+    # 7.0rc1 always draws a "boxplot / outlier" legend under the x axis; the title margin keeps it off the labels
+    extra: {whiskerOptions: Tukey, x_ticks_layout: auto, legendOrientation: bottom, x_axis_title_margin: 30}
+
+  - key: homes_by_city
+    name: Homes Sold by City
+    dataset: sales
+    viz_type: echarts_timeseries_bar
+    x: city
+    groupby: [city]                    # one series per city so each bar takes its own colour
+    metrics: [homes_sold]
+    orientation: horizontal
+    sort: {metric: homes_sold, desc: true}
+    legend: false
+    show_value: false
+    y_title: "# of Homes Sold"        # y_title = metric axis, x_title = category axis, in both orientations
+    y_format: ",d"
+    time_column: sale_date
+    extra: {y_axis_title_margin: 30}
+
+layout:
+  rows:
+    - [ {chart: price_box, width: 7, height: 75}, {chart: homes_by_city, width: 5, height: 75} ]
+
+filters:
+  - name: Date Range
+    type: time
+    default: "2013-09-16 : 2013-10-02"
+  - name: Home Type
+    type: select
+    column: home_type
+    datasets: [sales]
+    multi: true

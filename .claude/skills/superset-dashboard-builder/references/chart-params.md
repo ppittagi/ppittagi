@@ -29,6 +29,14 @@ Every chart must carry `"datasource": "<dataset_id>__table"` and `"viz_type"`. A
 adhoc filter on the chart's date column is what lets a dashboard time filter reach the chart** —
 the builder adds one (comparator `No filter`) whenever `x` is temporal or `time_column` is set.
 
+## Number formats: dataset metric `d3format` wins
+
+A saved metric with `d3format` on the dataset is formatted with that format wherever it is used
+(Big Number, pivot table, table) and the chart's own `y_axis_format` / `valueFormat` is ignored.
+So either leave `d3format` empty on shared metrics and format per chart, or use an adhoc metric on
+the chart that needs a different format (`metrics: [{col: sales, agg: SUM, label: Sales}]` + `y_format: "$.3s"`).
+d3 SI prefixes are lower-case (`$32.5k`); Tableau's `K` cannot be reproduced.
+
 ## viz_type catalogue (7.0, ECharts-based unless noted)
 
 | Family | viz_type | Key params | Tableau equivalent |
@@ -45,7 +53,7 @@ the builder adds one (comparator `No filter`) whenever `x` is temporal or `time_
 | Pivot | `pivot_table_v2` | `groupbyRows[]`, `groupbyColumns[]`, `metrics[]`, `metricsLayout` COLUMNS/ROWS, `rowTotals`, `colTotals`, `conditional_formatting[]` | crosstab / highlight table |
 | Grid table | `ag-grid-table` | like `table`, interactive sort/filter | text table |
 | Heatmap | `heatmap_v2` | `x_axis`, `groupby` (single column), `metric`, `linear_color_scheme`, `normalize_across` heatmap/x/y, `show_values` | highlight table / heat map |
-| Box plot | `box_plot` | `columns[]` (distribute across), `groupby[]` (series), `metrics[]`, `whiskerOptions` | box-and-whisker |
+| Box plot | `box_plot` | `groupby[]` (boxes / x axis), `columns[]` (distribute across: row id), `metrics[]`, `whiskerOptions` | box-and-whisker |
 | Histogram | `histogram_v2` | `column`, `bins`, `groupby[]`, `normalize`, `cumulative` | histogram |
 | Scatter/bubble | `bubble_v2` | `entity`, `series`, `x`, `y`, `size` (metrics), `max_bubble_size` | scatter / bubble |
 | Funnel | `funnel` | `groupby[]`, `metric`, `percent_calculation_type` | funnel |
@@ -129,6 +137,8 @@ Cumulative lines: easier via a virtual dataset with a window function than via S
  "extra_form_data":{}}
 ```
 Raw rows instead: `"query_mode":"raw","all_columns":["subject_id","site"],"order_by_cols":["[\"site\", true]"]`.
+Top-N tables (`row_limit: 10`) show a permanent "row limit reached" warning icon on the tile; use
+`server_pagination: true` + `server_page_length: 10` if the icon bothers reviewers.
 
 ### `pivot_table_v2`
 ```json
@@ -156,12 +166,19 @@ Raw rows instead: `"query_mode":"raw","all_columns":["subject_id","site"],"order
 
 ### `box_plot`
 ```json
-{"datasource":"12__table","viz_type":"box_plot","columns":["arm"],"groupby":[],"metrics":[{"expressionType":"SIMPLE","column":{"column_name":"age"},"aggregate":"AVG","label":"age"}],
+{"datasource":"12__table","viz_type":"box_plot","groupby":["city"],"columns":["sale_id"],
+ "metrics":[{"expressionType":"SIMPLE","column":{"column_name":"price"},"aggregate":"SUM","label":"price"}],
  "adhoc_filters":[],"whiskerOptions":"Tukey","x_ticks_layout":"auto","number_format":"SMART_NUMBER","date_format":"smart_date","color_scheme":"supersetColors","extra_form_data":{}}
 ```
-Box plot needs the **raw** values: put the measure in `metrics` with an aggregate that keeps one row
-per entity (e.g. a virtual dataset with one row per subject, metric `AVG(age)` grouped by subject
-via `groupby:["subject_id"]`).
+Semantics are easy to invert: **`groupby` = one box per value (the x axis, coloured per box)**, **`columns`
+("Distribute across") = the dimension whose per-value aggregates form the distribution** (an order id,
+a subject id, a date). Superset aggregates `metrics` per (`columns` value, `groupby` value) and then
+computes quartiles over those values. Spec: `x: city`, `distribute: [sale_id]`, `metrics: [{col: price, agg: SUM}]`.
+Tableau's "jittered points + box" is this chart with Tukey whiskers; outliers are drawn as points in the
+series colour (not grey). Superset 7.0 always renders a "boxplot / outlier" legend and ignores
+`show_legend`; the template puts it under the axis (`legendOrientation: bottom`) and reserves room with
+`x_axis_title_margin: 30` + an `x_title`. When many boxes make ECharts skip every other category label,
+use `extra: {x_ticks_layout: "45°"}`.
 
 ### `bubble_v2`
 ```json
@@ -172,9 +189,42 @@ via `groupby:["subject_id"]`).
  "max_bubble_size":"25","x_axis_format":"SMART_NUMBER","y_axis_format":"SMART_NUMBER","tooltipSizeFormat":"SMART_NUMBER","extra_form_data":{}}
 ```
 
-### `funnel`, `gauge_chart`, `treemap_v2`, `sunburst_v2`, `histogram_v2`, `waterfall`, `radar`
+### `histogram_v2`
+```json
+{"datasource":"12__table","viz_type":"histogram_v2","column":"quantity","groupby":[],"bins":7,"normalize":false,"cumulative":false,
+ "adhoc_filters":[],"row_limit":10000,"color_scheme":"supersetColors","show_legend":true,"show_value":false,
+ "x_axis_title":"Quantity (bin)","y_axis_title":"Count of Orders","x_axis_format":",d","extra_form_data":{}}
+```
+Bins are `bins` equal-width intervals between min and max (numpy edges), labelled "lo - hi" and formatted
+with **`x_axis_format`** (spec `x_format`). To match Tableau's "bin size 2 starting at 1", pick `bins` so the
+edges fall on the same boundaries (range 1..14 → 7 bins) and verify the counts with `--validate`. The y axis
+is forced to `scale: true` (does not start at 0) and the series label for `label_colors` is the column name.
+A bar chart on a pre-binned virtual dataset (`CAST(quantity/2 AS INT)*2`) is the way to get Tableau's exact
+labels and a zero-based axis.
+
+### `big_number_total` extras
+Colour the number: `"conditional_formatting":[{"column":"<metric label>","operator":">","targetValue":0,"colorScheme":"#4E79A7"}]`
+(`column` is the adhoc metric label or the saved metric name). `subheader` is the caption under the number.
+
+### `funnel`, `gauge_chart`, `treemap_v2`, `sunburst_v2`, `waterfall`, `radar`
 See the `TEMPLATES` dict in `scripts/chart_builder.py`; each is a copy of the Explore defaults with
 the data slots (`groupby`/`columns`/`metric(s)`/`x_axis`) filled by the spec.
+
+## One colour per bar (Tableau "Color = same field as Rows/Columns")
+
+A single-series bar is one colour. To give each category its own colour, break down by the same
+field: `x: city`, `groupby: [city]`. The builder turns the breakdown into an adhoc column
+(`{"expressionType":"SQL","sqlExpression":"city","label":"city (series)"}`) because Superset rejects two
+columns with the same label, and sets `stack: Stack` so each bar keeps its full width (otherwise the
+one-value-per-series bars are dodged into thin offset bars). `label_colors` then pins each category,
+and `legend: false` hides the redundant legend. The cost is the sorting limitation below (categories
+stay alphabetical). Negative values work (a negative bar simply points the other way).
+
+## Horizontal bars and sort direction
+
+ECharts draws a horizontal category axis bottom-up, so the first category sits at the bottom. The
+builder flips `x_axis_sort_asc` for `orientation: horizontal`, so `sort: {metric: Sales, desc: true}`
+gives Tableau's largest-on-top in both orientations. When writing raw params, remember to invert.
 
 ## Sorting with breakdowns (stacked bars sorted by total)
 

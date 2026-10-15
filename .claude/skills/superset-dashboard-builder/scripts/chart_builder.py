@@ -20,10 +20,10 @@ Spec shape (YAML/JSON, see assets/spec.example.yaml):
   stack: true              # true | false | Stream | Expand
   show_value: true
   legend: {show: true, position: top}   # top|bottom|left|right
-  x_title: "Visit month"
-  y_title: "Subjects"
+  x_title: "Visit month"   # title of the category/time axis (vertical when orientation=horizontal)
+  y_title: "Subjects"      # title of the metric axis
   y_format: ",d"           # d3 number format (SMART_NUMBER default)
-  sort: {metric: Subjects, desc: true}   # category sort
+  sort: {metric: Subjects, desc: true}   # category sort; desc = largest first (on top for horizontal bars)
   row_limit: 1000
   color_scheme: supersetColors
   label_colors: {Seoul: "#4E79A7", Busan: "#F28E2B"}   # exact series colors
@@ -162,10 +162,11 @@ TEMPLATES: dict[str, dict[str, Any]] = {
         "show_legend": True, "show_percentage": True, "show_values": True, "normalized": False,
         "extra_form_data": {},
     },
-    "box_plot": {  # `columns` = distribute across (x), `groupby` = series
+    "box_plot": {  # `groupby` = boxes (x axis), `columns` = distribute across (per-row id)
         "adhoc_filters": [], "whiskerOptions": "Tukey", "x_ticks_layout": "auto",
         "number_format": "SMART_NUMBER", "date_format": "smart_date", "color_scheme": "supersetColors",
-        "extra_form_data": {},
+        # 7.0 always draws a "boxplot / outlier" legend; keep it below the axis title so labels stay readable
+        "legendOrientation": "bottom", "x_axis_title_margin": 30, "extra_form_data": {},
     },
     "histogram_v2": {
         "adhoc_filters": [], "row_limit": 10000, "bins": 10, "normalize": False, "cumulative": False,
@@ -298,7 +299,12 @@ def build_params(spec: dict, dataset_id: Optional[int] = None) -> dict:
         if spec.get("time_grain"):
             p["time_grain_sqla"] = spec["time_grain"]
         p["metrics"] = metrics
-        p["groupby"] = groupby
+        # "colour every bar by its own category" = groupby the x column too. Superset rejects duplicate
+        # labels, so the breakdown becomes an adhoc SQL column with a different label.
+        p["groupby"] = [{"expressionType": "SQL", "sqlExpression": g, "label": f"{g} (series)",
+                         "hasCustomLabel": True} if g == x else g for g in groupby]
+        if x and x in groupby and "stack" not in spec and viz != "mixed_timeseries":
+            p["stack"] = "Stack"   # one series per category: stacking keeps each bar full width (not dodged)
         if viz == "mixed_timeseries":
             b = spec.get("b", {})
             p["metrics_b"] = [metric_obj(m) for m in b.get("metrics", [])]
@@ -381,9 +387,14 @@ def build_params(spec: dict, dataset_id: Optional[int] = None) -> dict:
         if spec.get("linear_color_scheme"):
             p["linear_color_scheme"] = spec["linear_color_scheme"]
     elif viz == "box_plot":
-        p["columns"] = [x] if x else list(spec.get("columns") or [])
-        p["groupby"] = groupby
+        # Superset box plot: `groupby` = one box per value (the x axis), `columns` = "distribute across"
+        # (the dimension whose per-value aggregates form the distribution, e.g. an order/sale id).
+        p["groupby"] = [x] if x else groupby
+        p["columns"] = list(spec.get("distribute") or spec.get("columns") or [])
         p["metrics"] = metrics
+        if not p["columns"]:
+            print(f"WARNING: box_plot needs `distribute: [<row id column>]` (Superset 'Distribute across'); "
+                  f"without it every box collapses to a single value.", file=sys.stderr)
         if spec.get("time_grain"):
             p["time_grain_sqla"] = spec["time_grain"]
     elif viz == "histogram_v2":
@@ -443,7 +454,9 @@ def build_params(spec: dict, dataset_id: Optional[int] = None) -> dict:
             if k in p:
                 p[k] = spec["y_format"]
     if spec.get("x_format"):
-        p["x_axis_time_format"] = spec["x_format"]
+        # XY charts format a temporal x axis with x_axis_time_format; histogram_v2 formats its bin
+        # edges with x_axis_format.
+        p["x_axis_format" if viz == "histogram_v2" else "x_axis_time_format"] = spec["x_format"]
     if spec.get("row_limit"):
         p["row_limit"] = spec["row_limit"]
     if spec.get("label_rotation") is not None:
@@ -472,7 +485,10 @@ def build_params(spec: dict, dataset_id: Optional[int] = None) -> dict:
                           file=sys.stderr)
                 else:
                     p["x_axis_sort"] = metric_label(p["timeseries_limit_metric"])
-                    p["x_axis_sort_asc"] = not sort.get("desc", True)
+                    # ECharts draws a horizontal category axis bottom-up, so "largest first" (desc) needs
+                    # ascending sort order to put the largest bar on top, as Tableau does.
+                    desc = bool(sort.get("desc", True))
+                    p["x_axis_sort_asc"] = desc if spec.get("orientation") == "horizontal" else not desc
             else:
                 p["order_desc"] = bool(sort.get("desc", True))
         elif sort.get("x") is not None and viz in XY_TYPES:
@@ -524,7 +540,7 @@ def build_query_context(params: dict, dataset_id: int, row_limit: Optional[int] 
         columns += [gb] if isinstance(gb, str) else list(gb or [])
         metrics = list(p.get("metrics") or ([p["metric"]] if p.get("metric") else []))
     elif viz in ("pie", "funnel", "treemap_v2", "radar", "gauge_chart", "box_plot"):
-        columns = list(p.get("groupby") or []) + list(p.get("columns") or [])
+        columns = list(p.get("columns") or []) + list(p.get("groupby") or [])
         metrics = list(p.get("metrics") or ([p["metric"]] if p.get("metric") else []))
     elif viz == "sunburst_v2":
         columns = list(p.get("columns") or [])

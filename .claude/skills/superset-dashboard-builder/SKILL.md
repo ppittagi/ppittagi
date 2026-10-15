@@ -17,8 +17,10 @@ rendered, filters scoped, export/import).
 
 Turn "I want this chart/dashboard in Superset" into created objects, reproducibly:
 **spec.yaml → `scripts/build_dashboard.py` → datasets, charts, dashboard (tabs, layout), native
-filters, colours**. The spec is idempotent (re-running updates the same objects) so it can live in git
-next to the Tableau screenshots it was derived from. Answer the user in their language (Korean here);
+filters, colours**. The spec is idempotent (re-running updates the same objects: the dashboard by
+slug/title, charts by the ids in `--state` or by name *within that dashboard*, datasets by table
+name) so it can live in git next to the Tableau screenshots it was derived from. Always pass the
+same `--state state.json` on re-runs; a same-named chart on another dashboard is never touched. Answer the user in their language (Korean here);
 keep YAML keys and Superset terms in English.
 
 ## Workflow
@@ -63,7 +65,8 @@ keep YAML keys and Superset terms in English.
    python scripts/build_dashboard.py spec.yaml --validate --state state.json
    ```
    `--validate` executes every chart query through `/api/v1/chart/data`; fix errors in the spec
-   (not in the UI) and re-run. The script prints the dashboard URL.
+   (not in the UI) and re-run. The script prints the dashboard URL, and `state.json` holds the real
+   dataset/chart/dashboard ids (dry-run prints placeholder ids) for later `chart get` / screenshot calls.
 
 5. **Verify & iterate.** Open the dashboard; compare with the source image (form, series order,
    colours, number formats, filters). If screenshots are configured on the server,
@@ -86,7 +89,13 @@ keep YAML keys and Superset terms in English.
   reaches charts that have a temporal x-axis or a `TEMPORAL_RANGE` adhoc filter (`time_column`).
 * Exact colours: `label_colors` (label → hex) at dashboard level; `color_scheme` is only the
   fallback. There is no built-in Tableau palette — hex values are in `references/colors.md`.
-* Row widths must sum to ≤ 12; heights are in 8 px units (`50` ≈ 400 px).
+* Row widths must sum to ≤ 12; heights are in 8 px units (`50` ≈ 400 px). Charts linked to the
+  dashboard but missing from the layout are unlinked on apply (Superset would otherwise render them
+  under the layout on every tab); pass `--keep-unplaced` to leave them.
+* Datasets are matched by table name: the spec's `columns:`/`metrics:` patch whatever dataset
+  matches, even one created by someone else. Keep those blocks additive (verbose names, `is_dttm`).
+* Horizontal bars: `sort: {metric, desc: true}` means largest on top (the builder flips the ECharts
+  order for you). One colour per bar: `groupby` the x column too; the builder aliases and stacks it.
 * Swagger UI and `GET /api/v1/_openapi` are both off by default in 7.0 (see
   `references/api-reference.md` to enable them); `GET /api/v1/<resource>/_info?q=(keys:!(add_columns))`
   always works — read it when a field name is in doubt instead of guessing.
@@ -97,8 +106,10 @@ keep YAML keys and Superset terms in English.
 * Stacked/dodged bars **cannot be sorted by total** (Superset limitation with `groupby`); tell the
   user and pick a workaround from `references/chart-params.md` ("Sorting with breakdowns").
 * No server-side screenshot setup? `scripts/screenshot_dashboard.py <slug> --all-tabs` renders the
-  dashboard with a local headless Chromium (needs `pip install playwright`), one PNG per tab, which you
-  can look at and compare with the Tableau image.
+  dashboard with a local headless Chromium (needs `pip install playwright`), one PNG per tab (one PNG
+  when the dashboard has no tabs), which you can look at and compare with the Tableau image.
+* A dataset metric's `d3format` overrides chart number formats (Big Number, pivot). Format per chart
+  with adhoc metrics, or leave `d3format` empty on shared metrics.
 
 ## References (read when needed)
 
@@ -123,7 +134,8 @@ keep YAML keys and Superset terms in English.
 | `scripts/screenshot_dashboard.py` | local headless-Chromium screenshots of a dashboard / each tab for visual comparison |
 
 Prefer the scripts over ad-hoc `curl`: they handle CSRF, token refresh, rison lookups, column
-checks and the chart↔dashboard linking order. For one-off calls use `superset_client.py raw`.
+checks and the chart↔dashboard linking order. For one-off calls use `superset_client.py raw METHOD
+/api/v1/... --json <file | - | inline JSON>`.
 
 ## Alternative routes worth knowing
 

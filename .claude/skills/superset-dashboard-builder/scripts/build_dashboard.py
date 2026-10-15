@@ -45,14 +45,16 @@ def log(msg: str) -> None:
 
 
 class Applier:
-    def __init__(self, spec: dict, client: Optional[SupersetClient], dry_run: bool):
+    def __init__(self, spec: dict, client: Optional[SupersetClient], dry_run: bool, keep_unplaced: bool = False):
         self.spec = spec
         self.c = client
         self.dry = dry_run
+        self.keep_unplaced = keep_unplaced
         self.dataset_ids: dict[str, int] = {}
         self.dataset_cols: dict[str, dict[str, dict]] = {}
         self.charts: dict[str, dict] = {}     # key -> {id, uuid, name, dataset_id, params}
         self.dashboard_id: Optional[int] = None
+        self.prev_state: dict = {}             # contents of an earlier --state file (ids by key)
         self._fake = 1000
 
     def _fake_id(self) -> int:
@@ -185,7 +187,7 @@ class Applier:
                 log(f"[chart] {key}: (dry-run) {chart['viz_type']} -> {json.dumps(params, ensure_ascii=False)[:160]}...")
                 continue
             assert self.c
-            found = self.c.find_chart(name, ds_id) or self.c.find_chart(name)
+            found = self._match_chart(key, name, ds_id)
             dashboards = [self.dashboard_id] if self.dashboard_id else []
             if found:
                 cur_dash = [d["id"] for d in self.c.chart(found["id"]).get("dashboards", [])]
@@ -202,6 +204,48 @@ class Applier:
                 cuuid = self.c.chart(cid).get("uuid")
                 log(f"[chart] {key}: created #{cid} ({chart['viz_type']})")
             self.charts[key] = {"id": cid, "uuid": cuuid, "name": name, "dataset_id": ds_id, "params": params}
+
+    def _match_chart(self, key: str, name: str, ds_id: int) -> Optional[dict]:
+        """
+        Find the chart this spec entry refers to without hijacking charts of other dashboards:
+        1. the id recorded for this key in a previous `--state` file (if it still exists),
+        2. a chart with this name that is linked to *this* dashboard,
+        3. otherwise none (a same-named chart on another dashboard is left alone, with a warning).
+        """
+        assert self.c
+        prev = (self.prev_state.get("charts") or {}).get(key) or {}
+        if prev.get("id"):
+            try:
+                c = self.c.chart(int(prev["id"]))
+                return {"id": int(prev["id"]), **c}
+            except SupersetError:
+                log(f"[chart] {key}: previous id #{prev['id']} no longer exists; matching by name")
+        candidates = self.c.list_all("/api/v1/chart/", [("slice_name", "eq", name)])
+        linked = [c for c in candidates if self.dashboard_id in {d.get("id") for d in c.get("dashboards", [])}]
+        if linked:
+            return linked[0]
+        if candidates:
+            log(f"[chart] {key}: a chart named {name!r} exists on another dashboard (#{candidates[0]['id']}); "
+                f"creating a separate chart for this dashboard instead of overwriting it")
+        return None
+
+    def unlink_unplaced_charts(self, placed_ids: set[int]) -> list[int]:
+        """Charts linked to the dashboard but absent from position_json are auto-rendered under the layout
+        by Superset. Detach them so the canvas shows exactly what the spec says."""
+        if self.dry or not self.c or not self.dashboard_id:
+            return []
+        removed = []
+        for c in self.c.dashboard_charts(self.dashboard_id):
+            cid = int(c["id"])
+            if cid in placed_ids:
+                continue
+            full = self.c.chart(cid)
+            others = [d["id"] for d in full.get("dashboards", []) if d["id"] != self.dashboard_id]
+            self.c.update_chart(cid, dashboards=others)
+            removed.append(cid)
+            log(f"[dashboard] unlinked chart #{cid} ({full.get('slice_name')}) - not in the spec layout"
+                f"{' (still on other dashboards)' if others else ''}")
+        return removed
 
     def validate_charts(self) -> bool:
         ok = True
@@ -280,6 +324,8 @@ class Applier:
         if dash.get("theme_id") is not None:
             fields["theme_id"] = dash["theme_id"]
         self.c.update_dashboard(self.dashboard_id, **fields)
+        if not self.keep_unplaced:
+            self.unlink_unplaced_charts({int(c["id"]) for c in self.charts.values()})
         log(f"[dashboard] layout + {len(filters)} native filter(s) saved -> {self.c.url}/superset/dashboard/"
             f"{dash.get('slug') or self.dashboard_id}/")
         return result
@@ -291,7 +337,10 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--validate", action="store_true", help="run every chart query after creation")
     ap.add_argument("--only", choices=["datasets", "charts", "dashboard"])
-    ap.add_argument("--state", help="write resulting ids to this JSON file")
+    ap.add_argument("--state", help="JSON file with the resulting ids; if it already exists its ids are used "
+                                    "to find the same charts again (safer than matching by name)")
+    ap.add_argument("--keep-unplaced", action="store_true",
+                    help="do not unlink charts that are linked to the dashboard but missing from the layout")
     ap.add_argument("--url"), ap.add_argument("--user"), ap.add_argument("--password")
     a = ap.parse_args()
 
@@ -311,7 +360,14 @@ def main() -> int:
         me = client.whoami()
         log(f"[auth] logged in as {me.get('username')} @ {client.url}")
 
-    app = Applier(spec, client, a.dry_run)
+    app = Applier(spec, client, a.dry_run, a.keep_unplaced)
+    if a.state and os.path.exists(a.state) and not a.dry_run:
+        try:
+            with open(a.state, encoding="utf-8") as fh:
+                app.prev_state = json.load(fh).get("state", {})
+            log(f"[state] using ids from {a.state}")
+        except (OSError, ValueError):
+            app.prev_state = {}
     app.apply_datasets()
     if a.only == "datasets":
         return 0

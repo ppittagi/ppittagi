@@ -46,8 +46,8 @@ types — prefer SQL.
 | What you see in Tableau | viz_type | spec hints |
 |---|---|---|
 | Vertical bars over time | `echarts_timeseries_bar` | `x: <date>`, `time_grain`, `groupby` for colour |
-| Vertical bars over categories | `echarts_timeseries_bar` | `x: <category>` (no time_grain), `sort` |
-| Horizontal bars (ranked) | `echarts_timeseries_bar` | `orientation: horizontal`, `sort: {metric, desc: true}` |
+| Vertical bars over categories | `echarts_timeseries_bar` | `x: <category>` (no time_grain), `sort`; bars coloured by the same field → add `groupby: [<category>]` |
+| Horizontal bars (ranked) | `echarts_timeseries_bar` | `orientation: horizontal`, `sort: {metric, desc: true}` (desc = largest on top; the builder handles ECharts' bottom-up axis) |
 | Stacked bars | same | `stack: true`; 100 % → `stack: Expand` |
 | Side-by-side bars (dodged) | same | `stack: false` |
 | Line, multiple lines | `echarts_timeseries_line` | `groupby` = colour field |
@@ -63,7 +63,7 @@ types — prefer SQL.
 | Heat map / calendar-ish grid | `heatmap_v2` | `x`, `groupby` (single), `linear_color_scheme` |
 | Scatter (circle marks, 2 measures) | `bubble_v2` | `entity`, `series`, `x_metric`, `y_metric`, `size_metric` |
 | Histogram | `histogram_v2` | `column`, `bins` |
-| Box-and-whisker | `box_plot` | `x` = category, `metrics` = raw measure |
+| Box-and-whisker (with or without jittered points) | `box_plot` | `x` = category (one box each), `distribute: [row id]`, `metrics` = measure aggregated per row id (SUM(sales) per order) |
 | Funnel (sorted horizontal bars shrinking) | `funnel` | |
 | Gauge / bullet | `gauge_chart` / `bullet` | `min_val`, `max_val`, `intervals` |
 | Treemap | `treemap_v2` | `groupby` = hierarchy |
