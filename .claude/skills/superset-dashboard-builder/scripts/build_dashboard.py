@@ -24,7 +24,7 @@ from typing import Any, Optional
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from chart_builder import build_params, build_query_context  # noqa: E402
 from dashboard_builder import (LayoutBuilder, build_json_metadata, build_native_filters,  # noqa: E402
-                               simple_grid_layout)
+                               panel_css, simple_grid_layout)
 from superset_client import SupersetClient, SupersetError  # noqa: E402
 
 
@@ -347,7 +347,9 @@ class Applier:
         merged_colors.update(dash.get("label_colors") or {})
         dash = {**dash, "label_colors": merged_colors} if merged_colors else dash
         meta = build_json_metadata(dash, filters, chart_ids, existing_meta)
-        result = {"position_json": position, "json_metadata": meta}
+        generated_css = panel_css(lb.panel_chart_ids, lb.untitled_chart_ids, bool(dash.get("seamless")))
+        css = "\n".join(x for x in (dash.get("css") or "", generated_css) if x).strip() or None
+        result = {"position_json": position, "json_metadata": meta, "css": css}
         if self.dry:
             log("[dashboard] (dry-run) position_json / json_metadata built")
             return result
@@ -356,8 +358,8 @@ class Applier:
                                   "dashboard_title": title, "published": bool(dash.get("published", True))}
         if dash.get("slug"):
             fields["slug"] = dash["slug"]
-        if dash.get("css") is not None:
-            fields["css"] = dash["css"]
+        if css is not None or dash.get("css") is not None:
+            fields["css"] = css or ""
         if dash.get("theme_id") is not None:
             fields["theme_id"] = dash["theme_id"]
         self.c.update_dashboard(self.dashboard_id, **fields)

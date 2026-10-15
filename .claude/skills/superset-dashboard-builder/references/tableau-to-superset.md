@@ -109,7 +109,9 @@ sure every chart has `time_column` (or a temporal `x`) so it reacts. "Apply to s
 
 Dashboard width fractions × 12 → `width`; keep each row ≤ 12. Heights: KPI row 20–25, charts
 50–60, tables 60–90. Tableau tabs / multiple dashboards → `layout.tabs`. Titles/captions → `header`
-rows, text objects → `markdown`.
+rows, text objects → `markdown`. Sheets that share one container in Tableau → a row with
+`panel: true` (and `hide_titles: true` when the container has a single caption), so the charts
+render without individual card borders.
 
 ## 5b. Layout tile titles
 

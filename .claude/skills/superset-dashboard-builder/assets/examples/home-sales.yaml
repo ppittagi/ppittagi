@@ -59,7 +59,9 @@ charts:
 
 layout:
   rows:
-    - [ {chart: price_box, width: 7, height: 75}, {chart: homes_by_city, width: 5, height: 75} ]
+    # both sheets in ONE panel, as on the Tableau dashboard (row background = the panel, no card borders)
+    - charts: [ {chart: price_box, width: 7, height: 75}, {chart: homes_by_city, width: 5, height: 75} ]
+      panel: true
 
 filters:
   - name: Date Range

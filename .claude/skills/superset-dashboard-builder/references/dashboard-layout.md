@@ -68,11 +68,35 @@ Other components: `HEADER` (`meta.text`, `headerSize` SMALL_HEADER|MEDIUM_HEADER
 `DIVIDER` (no meta), `COLUMN` (`meta.width`, `background`; children stack vertically inside a row —
 use it when a Tableau layout has a tall chart beside two stacked small ones).
 
+## One panel for several charts (Tableau-style sheets without card borders)
+
+Superset draws every chart as its own card (border, shadow, 16 px padding, title). Tableau sheets
+sit next to each other inside one container. To get that look, make the **row** the panel:
+
+```yaml
+layout:
+  rows:
+    - charts: [ {chart: price_box, width: 7, height: 75}, {chart: homes_by_city, width: 5, height: 75} ]
+      panel: true          # ROW meta.background = BACKGROUND_WHITE -> the row is the white panel
+      hide_titles: true    # optional: no per-chart tile titles (put a `header:` row above instead)
+```
+`build_dashboard.py` adds dashboard CSS for the charts in such rows (class names verified on 7.0rc1):
+```css
+.dashboard-chart-id-30, .dashboard-chart-id-31 { box-shadow: none !important; border: none !important; background: transparent !important; }
+.grid-row.background--white { border: 1px solid #d9d9d9; border-radius: 4px; }
+.dashboard-chart-id-31 .slice-header { display: none; }     /* hide_titles */
+```
+`dashboard.seamless: true` flattens every chart card on the dashboard instead. Per-chart
+`hide_title: true` inside a row item hides a single title. The chart's own `⋮` menu and the filter
+badge stay (they belong to the chart holder); the `header:` row and the dashboard title carry the
+Tableau titles. CSS is stored in the dashboard's `css` field together with any `dashboard.css` you
+wrote, so UI edits of the CSS are overwritten on the next apply.
+
 ## Translating a Tableau dashboard layout
 
 | Tableau | Superset |
 |---|---|
-| Dashboard with several sheets side by side | one tab (or untabbed grid) with rows; widths proportional to Tableau widths × 12 / total |
+| Dashboard with several sheets side by side | one tab (or untabbed grid) with rows; widths proportional to Tableau widths × 12 / total; `panel: true` on the row makes the sheets share one panel |
 | Multiple dashboards / story points / sheet tabs | `TABS` → one `TAB` per dashboard |
 | Vertical container with two sheets | `COLUMN` with two charts, or two rows |
 | Title text object | `HEADER` row (LARGE_HEADER) or dashboard title |

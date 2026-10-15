@@ -169,11 +169,16 @@ charts:
 layout:
   rows:
     - header: Which track do you participate in?  /  How often do you participate?
-    - [ {chart: donut_tableau, width: 2, height: 32, title: Tableau}, {chart: donut_pbi, width: 2, height: 32, title: PBI},
-        {chart: donut_both, width: 2, height: 32, title: Both}, {chart: frequency, width: 6, height: 32} ]
+    - charts: [ {chart: donut_tableau, width: 2, height: 32, title: Tableau}, {chart: donut_pbi, width: 2, height: 32, title: PBI},
+                {chart: donut_both, width: 2, height: 32, title: Both}, {chart: frequency, width: 6, height: 32} ]
+      panel: true                        # one panel like the Tableau sheet row
     - header: Indicate how much you agree or disagree with each statement
-    - [ {chart: likert, width: 8, height: 50}, {chart: likert_table, width: 4, height: 50} ]
+    - charts: [ {chart: likert, width: 8, height: 50}, {chart: likert_table, width: 4, height: 50} ]
+      panel: true
+      hide_titles: true                  # the section header above is the title
     - header: What do you want more of? Rank your choices
-    - [ {chart: ranking, width: 12, height: 62} ]
+    - charts: [ {chart: ranking, width: 12, height: 62} ]
+      panel: true
+      hide_titles: true
 
 filters: []

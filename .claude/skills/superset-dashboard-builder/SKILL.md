@@ -55,7 +55,9 @@ keep YAML keys and Superset terms in English.
      dashboard time filter reaches the chart
    * dashboard: `title`, `slug`, `published: true`, `color_scheme`, `label_colors` (dashboard-wide
      colour pinning), `cross_filters`
-   * layout: `tabs` → `rows` → `[ {chart, width, height} ]`, widths sum to 12 per row
+   * layout: `tabs` → `rows` → `[ {chart, width, height} ]`, widths sum to 12 per row; a row written as
+     `{charts: [...], panel: true, hide_titles: true}` shows its charts inside one panel without card
+     borders, the way Tableau sheets share a container
    * filters: `select | range | time | timegrain | timecolumn | divider`, `datasets`, `default`,
      `depends_on`, `scope`
 
