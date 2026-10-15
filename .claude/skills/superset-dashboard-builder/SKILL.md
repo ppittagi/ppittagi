@@ -12,6 +12,9 @@ description: >
 
 # Superset dashboard builder
 
+Verified end-to-end against `apache/superset:7.0.0rc1` and 6.1.0 (the example spec, all tabs
+rendered, filters scoped, export/import).
+
 Turn "I want this chart/dashboard in Superset" into created objects, reproducibly:
 **spec.yaml → `scripts/build_dashboard.py` → datasets, charts, dashboard (tabs, layout), native
 filters, colours**. The spec is idempotent (re-running updates the same objects) so it can live in git
@@ -84,8 +87,9 @@ keep YAML keys and Superset terms in English.
 * Exact colours: `label_colors` (label → hex) at dashboard level; `color_scheme` is only the
   fallback. There is no built-in Tableau palette — hex values are in `references/colors.md`.
 * Row widths must sum to ≤ 12; heights are in 8 px units (`50` ≈ 400 px).
-* Swagger UI is off by default in 7.0, but `GET /api/v1/_openapi` always works — read it when a
-  field name is in doubt instead of guessing.
+* Swagger UI and `GET /api/v1/_openapi` are both off by default in 7.0 (see
+  `references/api-reference.md` to enable them); `GET /api/v1/<resource>/_info?q=(keys:!(add_columns))`
+  always works — read it when a field name is in doubt instead of guessing.
 * Virtual datasets: after changing `sql`, columns must be refreshed (the builder does it). Mark date
   columns `is_dttm: true` or time grains/filters will not work.
 * If a chart type is not templated in `chart_builder.py`, pass full `params:` for it (copy from an

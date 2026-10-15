@@ -1,9 +1,13 @@
 # Superset 7.0 REST API — what this skill relies on
 
 All endpoints live under `{SUPERSET_URL}/api/v1/`. The live OpenAPI spec of *your* instance is at
-`GET /api/v1/_openapi` (Swagger UI `/swagger/v1` is **off by default in 7.0**; enable with
-`SUPERSET_ENABLE_SWAGGER_UI=true` or `FAB_API_SWAGGER_UI = True`). When in doubt, read `_openapi`
-rather than guessing — field names move between versions.
+`GET /api/v1/_openapi` and the Swagger UI at `/swagger/v1`. **Both are off by default in 7.0**
+(verified on 7.0.0rc1: 404 until enabled): set the env var `SUPERSET_ENABLE_SWAGGER_UI=true` or
+`FAB_API_SWAGGER_UI = True` in `superset_config.py`, restart, and run `superset init` once more so
+the `OpenApi` permission exists (otherwise `_openapi` answers 403). When in doubt, read `_openapi`
+rather than guessing — field names move between versions. A quick alternative that needs no config
+change: `GET /api/v1/<resource>/_info?q=(keys:!(add_columns,edit_columns))` lists the writable
+fields of a resource (e.g. `dashboard/_info` on 7.0 shows `editors`, `viewers`, `theme_id`).
 
 ## Authentication
 
@@ -25,7 +29,7 @@ service account, or issue a long-lived JWT and pass it via `SUPERSET_TOKEN`.
 | Area | 7.0 behaviour |
 |---|---|
 | Ownership | `owners` is **replaced by `editors` / `viewers`** (lists of subject ids: users, roles, groups) on dashboards, charts, datasets, alerts. Do not send `owners`. Creator is editor automatically. |
-| Swagger | UI off by default (`/api/v1/_openapi` JSON still works). |
+| Swagger / OpenAPI | Both `/swagger/v1` and `/api/v1/_openapi` are off by default (see top of this file); `/api/v1/<resource>/_info` always works. |
 | Soft delete | `SOFT_DELETE` on by default: `DELETE` archives; `POST /<uuid>/restore`, `POST /<uuid>/purge`. |
 | Version history | `VERSION_HISTORY` on by default: `PUT` returns version metadata; `/versions` endpoints exist. |
 | Externally managed | `PUT` on an entity with `is_managed_externally=true` → 403. Leave it false for API-built objects you want to edit in the UI. |

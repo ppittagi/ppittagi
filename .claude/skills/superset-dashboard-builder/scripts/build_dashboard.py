@@ -299,9 +299,15 @@ def main() -> int:
     conn = spec.get("superset", {})
     client = None
     if not a.dry_run:
-        client = SupersetClient(url=a.url or conn.get("url"), username=a.user or conn.get("username"),
-                                password=a.password or conn.get("password"))
-        client.login()
+        # precedence: CLI flag > SUPERSET_* env var > `superset:` block in the spec (so the same spec
+        # can be applied to dev and prod by switching the environment)
+        client = SupersetClient(url=a.url or os.environ.get("SUPERSET_URL") or conn.get("url"),
+                                username=a.user or os.environ.get("SUPERSET_USERNAME") or conn.get("username"),
+                                password=a.password or os.environ.get("SUPERSET_PASSWORD") or conn.get("password"))
+        try:
+            client.login()
+        except Exception as e:  # noqa: BLE001 - connection refused / DNS / TLS
+            sys.exit(f"cannot reach Superset at {client.url}: {e}")
         me = client.whoami()
         log(f"[auth] logged in as {me.get('username')} @ {client.url}")
 

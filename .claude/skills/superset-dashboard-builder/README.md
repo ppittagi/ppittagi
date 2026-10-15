@@ -41,5 +41,8 @@ assets/spec.example.yaml       임상시험 예제 (데이터셋 2, 차트 7, �
 
 ## 로컬 검증
 
-`assets/spec.example.yaml`은 Superset 6.1(SQLite 샘플 DB)에서 실제로 적용·검증되었습니다.
-7.0의 API 차이(`owners`→`editors`, Swagger 기본 비활성 등)는 `references/api-reference.md`에 정리했습니다.
+`assets/spec.example.yaml`은 **Superset 7.0.0rc1 공식 Docker 이미지**(`apache/superset:7.0.0rc1`)와
+6.1.0(pip)에서 실제로 적용·검증되었습니다 (데이터셋 2, 차트 7 쿼리 검증, 탭 3, 네이티브 필터 6,
+export/import, 브라우저 렌더링 확인). 7.0은 아직 PyPI에 올라오지 않아(최신 6.1.0) Docker 이미지로
+검증했습니다. 7.0 API 차이(`owners`→`editors`/`viewers`, Swagger 기본 비활성 등)는
+`references/api-reference.md`에 정리했습니다.

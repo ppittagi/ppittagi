@@ -3,7 +3,7 @@
 # Everything is idempotent: datasets are matched by table name, charts by name, dashboard by slug.
 
 superset:
-  url: http://localhost:8088        # or SUPERSET_URL env; username/password from env
+  url: http://localhost:8088        # fallback only: SUPERSET_URL / --url take precedence; credentials from env
 
 dashboard:
   title: Study Enrollment & Safety
