@@ -53,6 +53,10 @@ datasets:
 
 charts:
   # ---- tab 1: four small-multiple US state maps (one metric each) ----
+  # NOTE (7.0.0rc1): on a dashboard the country map colours every region categorically because the
+  # dashboard injects its categorical color_scheme into the chart; the same chart is a correct
+  # metric-coloured choropleth in Explore. Neither linear_color_scheme nor conditional_formatting
+  # changes that on the dashboard. Known rendering quirk; re-check on 7.0 GA.
   - key: map_sales
     name: Sales by state
     dataset: superstore_states
