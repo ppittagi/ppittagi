@@ -107,7 +107,9 @@ keep YAML keys and Superset terms in English.
   user and pick a workaround from `references/chart-params.md` ("Sorting with breakdowns").
 * No server-side screenshot setup? `scripts/screenshot_dashboard.py <slug> --all-tabs` renders the
   dashboard with a local headless Chromium (needs `pip install playwright`), one PNG per tab (one PNG
-  when the dashboard has no tabs), which you can look at and compare with the Tableau image.
+  when the dashboard has no tabs), which you can look at and compare with the Tableau image. Use
+  `--wait 20` right after a layout change (charts load after the filter bar), and `--query
+  "native_filters=(...)"` to capture a filter state.
 * A dataset metric's `d3format` overrides chart number formats (Big Number, pivot). Format per chart
   with adhoc metrics, or leave `d3format` empty on shared metrics.
 

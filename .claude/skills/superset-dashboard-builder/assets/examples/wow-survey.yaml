@@ -1,0 +1,179 @@
+# Reproduction of the Tableau "#WorkoutWednesday2021 Community Survey Results" dashboard:
+# three single-value donuts (click to filter), a frequency bar in scale order, a diverging Likert
+# stacked bar with a percent table beside it, and a rank x topic "what do you want more of" matrix.
+# Tables: wow_responses(respondent_id, track, frequency, freq_order), wow_likert(respondent_id,
+# statement, stmt_order, answer, answer_order), wow_rank(respondent_id, topic, rank_pos).
+
+dashboard:
+  title: "#WorkoutWednesday2021 | Community Survey Results"
+  slug: wow-survey-2021
+  published: true
+  color_scheme: supersetColors
+  cross_filters: true                 # Tableau "click to filter" on the donuts and the frequency bar
+  label_colors:
+    Tableau: "#7FC4B6"
+    PBI: "#3F5F9E"
+    Both: "#F7A1B0"
+    Other: "#D9D9D9"
+    Respondents: "#D0D0D0"
+    # Likert series: zero-width-space prefixes fix the legend/stack order (see chart-params.md "Ordered categories")
+    "​​​​​Neither": "#C8C8C8"
+    "​​​​Neither ": "#C8C8C8"
+    "​​​Disagree": "#F8C675"
+    "​​Agree": "#8EC9B5"
+    "​Strongly Disagree": "#E0801A"
+    "Strongly Agree": "#1C7A6E"
+
+datasets:
+  - key: responses
+    database: clinical
+    table: v_wow_responses
+    sql: |
+      SELECT respondent_id, track, frequency, freq_order,
+             -- invisible ordering prefix (one zero-width space per rank step) keeps the scale order on a category axis
+             substr(replace(hex(zeroblob(freq_order - 1)), '00', char(8203)), 1, (freq_order - 1)) || frequency AS frequency_ordered
+      FROM wow_responses
+  - key: likert
+    database: clinical
+    table: v_wow_likert_diverging
+    sql: |
+      WITH n AS (SELECT statement, COUNT(*) AS total FROM wow_likert GROUP BY statement),
+      base AS (
+        SELECT l.statement, l.stmt_order, l.answer, l.answer_order,
+               COUNT(*) * 1.0 / n.total AS share
+        FROM wow_likert l JOIN n USING (statement)
+        GROUP BY l.statement, l.stmt_order, l.answer, l.answer_order, n.total)
+      SELECT statement, stmt_order, answer, answer_order, share,
+             substr(replace(hex(zeroblob(stmt_order - 1)), '00', char(8203)), 1, (stmt_order - 1)) || statement AS statement_ordered,
+             CASE answer
+               WHEN 'Strongly Disagree' THEN char(8203) || 'Strongly Disagree'
+               WHEN 'Disagree' THEN char(8203) || char(8203) || char(8203) || 'Disagree'
+               WHEN 'Agree' THEN char(8203) || char(8203) || 'Agree'
+               ELSE 'Strongly Agree' END AS series,
+             CASE WHEN answer_order <= 2 THEN -share ELSE share END AS signed_share
+      FROM base WHERE answer <> 'Neither Agree nor Disagree'
+      UNION ALL   -- the neutral answer straddles zero: half to the left, half to the right
+      SELECT statement, stmt_order, answer, answer_order, share,
+             substr(replace(hex(zeroblob(stmt_order - 1)), '00', char(8203)), 1, (stmt_order - 1)) || statement,
+             char(8203) || char(8203) || char(8203) || char(8203) || char(8203) || 'Neither', -share / 2
+      FROM base WHERE answer = 'Neither Agree nor Disagree'
+      UNION ALL
+      SELECT statement, stmt_order, answer, answer_order, share,
+             substr(replace(hex(zeroblob(stmt_order - 1)), '00', char(8203)), 1, (stmt_order - 1)) || statement,
+             char(8203) || char(8203) || char(8203) || char(8203) || 'Neither ', share / 2
+      FROM base WHERE answer = 'Neither Agree nor Disagree'
+  - key: likert_share
+    database: clinical
+    table: v_wow_likert_share
+    sql: |
+      WITH n AS (SELECT statement, COUNT(*) AS total FROM wow_likert GROUP BY statement)
+      SELECT l.statement, l.answer,
+             substr(replace(hex(zeroblob(l.answer_order - 1)), '00', char(8203)), 1, (l.answer_order - 1)) || l.answer AS answer_ordered,
+             COUNT(*) * 1.0 / n.total AS share
+      FROM wow_likert l JOIN n USING (statement)
+      GROUP BY l.statement, l.answer, l.answer_order, n.total
+    columns:
+      - {column_name: answer_ordered, verbose_name: Answer}
+      - {column_name: statement, verbose_name: Statement}
+  - key: ranks
+    database: clinical
+    table: v_wow_rank
+    sql: |
+      SELECT r.topic, r.rank_pos,
+             CASE r.rank_pos WHEN 1 THEN '1st' WHEN 2 THEN '2nd' WHEN 3 THEN '3rd' ELSE r.rank_pos || 'th' END AS rank_label,
+             COUNT(*) * 1.0 / (SELECT COUNT(*) FROM wow_responses) AS share
+      FROM wow_rank r GROUP BY r.topic, r.rank_pos
+
+charts:
+  - key: donut_tableau
+    name: Tableau track
+    dataset: responses
+    viz_type: pie
+    groupby: [{sql: "CASE WHEN track = 'Tableau' THEN 'Tableau' ELSE 'Other' END", label: Track}]
+    metrics: [{col: respondent_id, agg: COUNT, label: Respondents}]
+    donut: true
+    legend: false
+    extra: {label_type: percent, labels_outside: false, show_labels_threshold: 0, innerRadius: 60, outerRadius: 85, sort_by_metric: false}
+  - key: donut_pbi
+    name: PBI track
+    dataset: responses
+    viz_type: pie
+    groupby: [{sql: "CASE WHEN track = 'PBI' THEN 'PBI' ELSE 'Other' END", label: Track}]
+    metrics: [{col: respondent_id, agg: COUNT, label: Respondents}]
+    donut: true
+    legend: false
+    extra: {label_type: percent, labels_outside: false, show_labels_threshold: 0, innerRadius: 60, outerRadius: 85, sort_by_metric: false}
+  - key: donut_both
+    name: Both tracks
+    dataset: responses
+    viz_type: pie
+    groupby: [{sql: "CASE WHEN track = 'Both' THEN 'Both' ELSE 'Other' END", label: Track}]
+    metrics: [{col: respondent_id, agg: COUNT, label: Respondents}]
+    donut: true
+    legend: false
+    extra: {label_type: percent, labels_outside: false, show_labels_threshold: 0, innerRadius: 60, outerRadius: 85, sort_by_metric: false}
+
+  - key: frequency
+    name: How often do you participate?
+    dataset: responses
+    viz_type: echarts_timeseries_bar
+    x: frequency_ordered
+    metrics: [{col: respondent_id, agg: COUNT, label: Respondents}]
+    orientation: horizontal
+    sort: {x: asc}                    # scale order (index sort on the prefixed label; asc = first on top)
+    show_value: true
+    legend: false
+    y_format: ".0%"
+    # adhoc metrics may not contain sub-queries ("Custom SQL fields cannot contain sub-queries"), so the
+    # share of respondents comes from contribution mode instead of COUNT(*) / (SELECT COUNT(*) ...)
+    extra: {contributionMode: column, x_axis_title: "", y_axis_title: ""}
+
+  - key: likert
+    name: Indicate how much you agree or disagree with each statement
+    dataset: likert
+    viz_type: echarts_timeseries_bar
+    x: statement_ordered
+    metrics: [{col: signed_share, agg: SUM, label: "% of Respondents"}]
+    groupby: [series]
+    orientation: horizontal
+    stack: true
+    show_value: true
+    only_total: false
+    sort: {x: asc}                    # first statement on top
+    legend: {show: true, position: bottom}
+    y_title: "% of Respondents"
+    y_format: ".0%"
+    extra: {x_axis_title: "", xAxisLabelRotation: 0, y_axis_bounds: [-0.8, 1.0], truncateYAxis: true}
+
+  - key: likert_table
+    name: Share by answer
+    dataset: likert_share
+    viz_type: pivot_table_v2
+    rows: [statement]
+    columns: [answer_ordered]
+    metrics: [{col: share, agg: SUM, label: Share}]
+    extra: {valueFormat: ".0%", colOrder: key_a_to_z, rowOrder: key_a_to_z, combineMetric: true, rowSubTotals: false, colSubTotals: false,
+            conditional_formatting: [{column: Share, operator: ">", targetValue: 0, colorScheme: "#8EC9B5"}]}
+
+  - key: ranking
+    name: "What do you want more of? Rank your choices"
+    dataset: ranks
+    viz_type: heatmap_v2
+    x: rank_label
+    groupby: [topic]
+    metrics: [{col: share, agg: SUM, label: Share}]
+    linear_color_scheme: schemePurples
+    y_format: ".0%"
+    extra: {show_values: true, show_percentage: false, legend_type: continuous, normalize_across: heatmap, left_margin: 150, bottom_margin: 60, sort_y_axis: alpha_desc}
+
+layout:
+  rows:
+    - header: Which track do you participate in?  /  How often do you participate?
+    - [ {chart: donut_tableau, width: 2, height: 32, title: Tableau}, {chart: donut_pbi, width: 2, height: 32, title: PBI},
+        {chart: donut_both, width: 2, height: 32, title: Both}, {chart: frequency, width: 6, height: 32} ]
+    - header: Indicate how much you agree or disagree with each statement
+    - [ {chart: likert, width: 8, height: 50}, {chart: likert_table, width: 4, height: 50} ]
+    - header: What do you want more of? Rank your choices
+    - [ {chart: ranking, width: 12, height: 62} ]
+
+filters: []

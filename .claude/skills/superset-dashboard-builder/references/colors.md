@@ -9,10 +9,16 @@ Three layers, from strongest to weakest:
 
 Dashboard-level `label_colors` is applied to every chart on the dashboard, so one mapping (site →
 colour, arm → colour) keeps colours consistent across tabs. **Inside a dashboard only the
-dashboard-level mapping is honoured** — chart-level `params.label_colors` works in Explore but is
-ignored on the dashboard canvas (verified on 6.1). `build_dashboard.py` therefore merges every
+dashboard-level mapping is honoured** — on 7.0 chart-level `params.label_colors` is ignored both on
+the dashboard canvas and in Explore (verified on 7.0.0rc1; check colours on the dashboard, not in Explore). `build_dashboard.py` therefore merges every
 chart's `label_colors` into `json_metadata.label_colors`; if you write metadata by hand, do the same.
 Null category label is `<NULL>` in 7.0.
+
+Two 7.0 quirks seen in testing: a series whose name equals a metric/column `verbose_name` used
+elsewhere on the dashboard is looked up through the dataset's verbose map before the colour lookup, so
+pin the raw name as well (`sales` and `Sales`), or give single-series charts a unique metric label;
+and the same label used as a metric label on one chart and a series on another may not pin — unique
+labels per role avoid both.
 
 ## Reading colours from a Tableau screenshot
 

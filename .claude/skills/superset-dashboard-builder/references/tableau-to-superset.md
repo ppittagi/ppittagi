@@ -71,6 +71,15 @@ types — prefer SQL.
 | Gantt (visit windows) | `gantt` (7.0) or `echarts_timeseries_bar` horizontal with start/end virtual dataset | |
 | Text object / notes | `layout` `markdown` row | |
 
+Quarter labels: d3 has no quarter directive, so `QUARTER(d)` as "2023-Q1" needs a calculated column in
+the dataset (`strftime('%Y', d) || '-Q' || ((CAST(strftime('%m', d) AS INT) + 2) / 3)`) used as a
+categorical `x`, with `time_column: d` so time filters still apply; a temporal `P3M` axis shows month labels.
+Legend titles and legends inside the plot area do not exist in Superset (legend is top/bottom/left/right).
+Filter cards always live in the left (or top) filter bar; tabs always sit on top of the canvas.
+Ridgeline / joy plots: no equivalent — overlaid translucent area curves from a binned virtual dataset
+(`assets/examples/ridgeline-customers.yaml`) or one box plot per category are the closest forms.
+Survey dashboards (donut per answer, Likert diverging bars, rank matrices): `assets/examples/wow-survey.yaml`.
+
 Things Superset cannot do 1:1 (say so, then pick the closest): stacked/dodged bars sorted by total
 (categories stay alphabetical when a colour breakdown exists — see "Sorting with breakdowns" in
 `chart-params.md`), dual-colour encodings on one mark,
@@ -97,6 +106,12 @@ sure every chart has `time_column` (or a temporal `x`) so it reacts. "Apply to s
 Dashboard width fractions × 12 → `width`; keep each row ≤ 12. Heights: KPI row 20–25, charts
 50–60, tables 60–90. Tableau tabs / multiple dashboards → `layout.tabs`. Titles/captions → `header`
 rows, text objects → `markdown`.
+
+## 5b. Layout tile titles
+
+The dashboard tile shows the chart's `name`; when several dashboards reproduce the same Tableau
+sheet, keep chart names unique per dashboard (e.g. "Sales by Region (Overview)") and set the Tableau
+title on the tile with `title:` in the layout item (`{chart: key, width: 6, title: "Sales by Region"}`).
 
 ## 6. Resolve data bindings (ask the user when needed)
 

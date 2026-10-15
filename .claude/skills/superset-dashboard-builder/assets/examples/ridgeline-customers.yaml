@@ -1,0 +1,95 @@
+# Reproduction of the "ShowMeMore - Ridgeline Plot" Tableau dashboard: a ridgeline (joy plot) of a
+# measure's distribution per sub-category, and a customer table with in-cell bars for Sales / Profit /
+# Quantity. Superset has no ridgeline chart; the closest native forms are an overlaid histogram per
+# sub-category (one chart) or a box plot per sub-category. Table: superstore.
+
+dashboard:
+  title: ShowMeMore - Ridgeline Plot
+  slug: ridgeline-customers
+  published: true
+  color_scheme: supersetColors
+  cross_filters: true
+
+datasets:
+  - key: superstore
+    database: clinical
+    table: superstore
+  - key: sales_bins
+    database: clinical
+    table: v_superstore_sales_bins
+    sql: |
+      -- one row per (sub_category, 10-unit sales bin), zero-filled so every curve is continuous
+      WITH RECURSIVE bins(b) AS (SELECT 0 UNION ALL SELECT b + 10 FROM bins WHERE b < 400),
+      subs AS (SELECT DISTINCT sub_category FROM superstore)
+      SELECT s.sub_category, bins.b AS sales_bin,
+             (SELECT COUNT(*) FROM superstore o
+               WHERE o.sub_category = s.sub_category AND CAST(o.sales / 10 AS INT) * 10 = bins.b) AS orders
+      FROM subs s CROSS JOIN bins
+
+charts:
+  - key: ridgeline
+    name: Sales distribution by Sub-Category
+    dataset: sales_bins
+    viz_type: echarts_area                # Superset has no ridgeline: overlaid translucent density curves instead
+    x: sales_bin
+    metrics: [{col: orders, agg: SUM, label: Orders}]
+    groupby: [sub_category]
+    stack: false
+    legend: {show: true, position: right}
+    x_title: Sales per order
+    y_title: Orders
+    extra: {seriesType: smooth, opacity: 0.45, markerEnabled: false, show_extra_controls: false, sort_series_type: name, sort_series_ascending: true}
+    label_colors:
+      Accessories: "#E5457A"
+      Appliances: "#E5457A"
+      Art: "#E5457A"
+      Binders: "#E5457A"
+      Bookcases: "#E5457A"
+      Chairs: "#E5457A"
+      Copiers: "#E5457A"
+      Furnishings: "#E5457A"
+      Labels: "#E5457A"
+      Machines: "#E5457A"
+      Paper: "#9ED8F5"                   # the one highlighted ridge in the Tableau view
+      Phones: "#E5457A"
+      Storage: "#E5457A"
+      Tables: "#E5457A"
+
+  - key: ridgeline_box
+    name: Sales per order by Sub-Category (box plot)
+    dataset: superstore
+    viz_type: box_plot
+    x: sub_category
+    distribute: [order_id]
+    metrics: [{col: sales, agg: SUM, label: Sales}]
+    filters: ["sales <= 800"]
+    y_format: "$,.0f"
+    extra: {x_ticks_layout: "45°", color_scheme: supersetColors}
+
+  - key: customers
+    name: Customers
+    dataset: superstore
+    viz_type: table
+    groupby: [customer_name]
+    metrics:
+      - {col: sales, agg: SUM, label: Sales}
+      - {col: profit, agg: SUM, label: Profit}
+      - {col: quantity, agg: SUM, label: Quantity}
+    sort: {metric: Sales, desc: true}
+    row_limit: 50
+    extra:
+      show_cell_bars: true             # Tableau's in-cell bars
+      align_pn: false
+      color_pn: false
+      column_config:
+        Sales: {d3NumberFormat: "$,.0f"}
+        Profit: {d3NumberFormat: "$,.0f"}
+        Quantity: {d3NumberFormat: ",d"}
+      server_pagination: false
+
+layout:
+  rows:
+    - [ {chart: ridgeline, width: 6, height: 70}, {chart: customers, width: 6, height: 70} ]
+    - [ {chart: ridgeline_box, width: 12, height: 50} ]
+
+filters: []

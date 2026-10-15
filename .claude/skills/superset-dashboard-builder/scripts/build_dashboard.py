@@ -45,11 +45,13 @@ def log(msg: str) -> None:
 
 
 class Applier:
-    def __init__(self, spec: dict, client: Optional[SupersetClient], dry_run: bool, keep_unplaced: bool = False):
+    def __init__(self, spec: dict, client: Optional[SupersetClient], dry_run: bool, keep_unplaced: bool = False,
+                 no_dataset_patch: bool = False):
         self.spec = spec
         self.c = client
         self.dry = dry_run
         self.keep_unplaced = keep_unplaced
+        self.no_dataset_patch = no_dataset_patch
         self.dataset_ids: dict[str, int] = {}
         self.dataset_cols: dict[str, dict[str, dict]] = {}
         self.charts: dict[str, dict] = {}     # key -> {id, uuid, name, dataset_id, params}
@@ -134,7 +136,13 @@ class Applier:
             for k in ("main_dttm_col", "description", "cache_timeout", "fetch_values_predicate"):
                 if k in ds:
                     patch[k] = ds[k]
-            if patch:
+            if patch and found and self.no_dataset_patch:
+                log(f"[dataset] {key}: existing dataset #{ds_id} left untouched (--no-dataset-patch); "
+                    f"spec metadata ({', '.join(patch)}) not applied")
+            elif patch:
+                if found:
+                    log(f"[dataset] {key}: NOTE patching metadata of an existing dataset #{ds_id} that other "
+                        f"dashboards may share ({', '.join(patch)})")
                 self.c.update_dataset(ds_id, patch)
                 log(f"[dataset] {key}: metadata updated ({', '.join(patch)})")
             self.dataset_ids[key] = ds_id
@@ -255,12 +263,13 @@ class Applier:
             qc = build_query_context(info["params"], info["dataset_id"], row_limit=5)
             try:
                 res = self.c.chart_data(qc)
-                r0 = res["result"][0]
-                if r0.get("error"):
-                    ok = False
-                    log(f"[validate] {key}: ERROR {r0['error']}")
-                else:
-                    log(f"[validate] {key}: ok, {r0.get('rowcount')} rows, cols={r0.get('colnames')}")
+                for i, r0 in enumerate(res["result"]):
+                    tag = f"{key}" if len(res["result"]) == 1 else f"{key} (query {'AB'[i] if i < 2 else i})"
+                    if r0.get("error"):
+                        ok = False
+                        log(f"[validate] {tag}: ERROR {r0['error']}")
+                    else:
+                        log(f"[validate] {tag}: ok, {r0.get('rowcount')} rows, cols={r0.get('colnames')}")
             except SupersetError as e:
                 ok = False
                 log(f"[validate] {key}: ERROR {e}")
@@ -341,6 +350,8 @@ def main() -> int:
                                     "to find the same charts again (safer than matching by name)")
     ap.add_argument("--keep-unplaced", action="store_true",
                     help="do not unlink charts that are linked to the dashboard but missing from the layout")
+    ap.add_argument("--no-dataset-patch", action="store_true",
+                    help="never modify columns/metrics of datasets that already existed (shared instances)")
     ap.add_argument("--url"), ap.add_argument("--user"), ap.add_argument("--password")
     a = ap.parse_args()
 
@@ -360,7 +371,7 @@ def main() -> int:
         me = client.whoami()
         log(f"[auth] logged in as {me.get('username')} @ {client.url}")
 
-    app = Applier(spec, client, a.dry_run, a.keep_unplaced)
+    app = Applier(spec, client, a.dry_run, a.keep_unplaced, a.no_dataset_patch)
     if a.state and os.path.exists(a.state) and not a.dry_run:
         try:
             with open(a.state, encoding="utf-8") as fh:

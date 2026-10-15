@@ -11,7 +11,14 @@ Spec shape (YAML/JSON, see assets/spec.example.yaml):
     - count                #   saved metric name
     - {col: subject_id, agg: COUNT_DISTINCT, label: Subjects}
     - {sql: "SUM(ae_cnt)*1.0/COUNT(DISTINCT subject_id)", label: AE per subject}
-  groupby: [site]          # series / breakdown dimensions
+  groupby: [site]          # series / breakdown dimensions; {sql: "CASE ... END", label: Band} = calculated dimension
+  b:                       # mixed_timeseries only: second query
+    metrics: [{col: profit, agg: SUM, label: Profit}]
+    kind: line             # bar|line|smooth|scatter
+    secondary_axis: true
+    title: Profit          # secondary axis title / format / markers
+    format: "$.2s"
+    markers: true
   filters:                 # chart-level filters (dashboard native filters come on top)
     - {col: status, op: IN, val: [Enrolled, Completed]}
     - "ae_grade >= 3"      #   free SQL WHERE snippet
@@ -24,6 +31,7 @@ Spec shape (YAML/JSON, see assets/spec.example.yaml):
   y_title: "Subjects"      # title of the metric axis
   y_format: ",d"           # d3 number format (SMART_NUMBER default)
   sort: {metric: Subjects, desc: true}   # category sort; desc = largest first (on top for horizontal bars)
+                                          # or {x: asc|desc} to sort by the category label; or series_by: name|sum
   row_limit: 1000
   color_scheme: supersetColors
   label_colors: {Seoul: "#4E79A7", Busan: "#F28E2B"}   # exact series colors
@@ -47,8 +55,6 @@ from typing import Any, Optional
 # --------------------------------------------------------------------------- #
 _XY_COMMON: dict[str, Any] = {
     "x_axis_sort_asc": True,
-    "x_axis_sort_series": "name",
-    "x_axis_sort_series_ascending": True,
     "adhoc_filters": [],
     "order_desc": True,
     "row_limit": 10000,
@@ -58,10 +64,11 @@ _XY_COMMON: dict[str, Any] = {
     "annotation_layers": [],
     "forecastPeriods": 10,
     "forecastInterval": 0.8,
-    "x_axis_title_margin": 15,
-    "y_axis_title_margin": 15,
+    "x_axis_title_margin": 30,
+    "y_axis_title_margin": 30,
     "y_axis_title_position": "Left",
-    "sort_series_type": "sum",
+    "sort_series_type": "name",        # series/stack order: alphabetical like Tableau (7.0 key)
+    "sort_series_ascending": True,
     "color_scheme": "supersetColors",
     "show_value": False,
     "only_total": True,
@@ -155,7 +162,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
     },
     # ---- distributions ------------------------------------------------------
     "heatmap_v2": {
-        "adhoc_filters": [], "row_limit": 10000, "sort_x_axis": "alpha_asc", "sort_y_axis": "alpha_asc",
+        "adhoc_filters": [], "row_limit": 10000, "sort_x_axis": "alpha_asc", "sort_y_axis": "alpha_desc",  # ECharts y axis is bottom-up: desc = first row on top
         "normalize_across": "heatmap", "legend_type": "continuous", "linear_color_scheme": "blue_white_yellow",
         "xscale_interval": -1, "yscale_interval": -1, "left_margin": "auto", "bottom_margin": "auto",
         "value_bounds": [None, None], "y_axis_format": "SMART_NUMBER", "x_axis_time_format": "smart_date",
@@ -238,6 +245,14 @@ def metric_label(m: Any) -> str:
     return m if isinstance(m, str) else m.get("label", "")
 
 
+def column_obj(c: Any) -> Any:
+    """Dimension shorthand: a column name, or {sql: "<expression>", label: "..."} for a calculated dimension."""
+    if isinstance(c, dict) and "sql" in c:
+        label = c.get("label") or c["sql"]
+        return {"expressionType": "SQL", "sqlExpression": c["sql"], "label": label, "hasCustomLabel": True}
+    return c
+
+
 def filter_obj(f: Any) -> dict:
     """Expand shorthand filter into an adhoc filter."""
     if isinstance(f, str):
@@ -288,8 +303,8 @@ def build_params(spec: dict, dataset_id: Optional[int] = None) -> dict:
         p["datasource"] = f"{dataset_id}__table"
 
     metrics = [metric_obj(m) for m in (spec.get("metrics") or ([spec["metric"]] if spec.get("metric") else []))]
-    groupby = list(spec.get("groupby") or [])
-    x = spec.get("x")
+    groupby = [column_obj(g) for g in (spec.get("groupby") or [])]
+    x = column_obj(spec.get("x")) if spec.get("x") else None
     temporal_col = spec.get("time_column") or (x if spec.get("time_grain") or spec.get("x_is_time") else None)
 
     # ---- per-family slots ---------------------------------------------------
@@ -302,7 +317,7 @@ def build_params(spec: dict, dataset_id: Optional[int] = None) -> dict:
         # "colour every bar by its own category" = groupby the x column too. Superset rejects duplicate
         # labels, so the breakdown becomes an adhoc SQL column with a different label.
         p["groupby"] = [{"expressionType": "SQL", "sqlExpression": g, "label": f"{g} (series)",
-                         "hasCustomLabel": True} if g == x else g for g in groupby]
+                         "hasCustomLabel": True} if isinstance(g, str) and g == x else g for g in groupby]
         if x and x in groupby and "stack" not in spec and viz != "mixed_timeseries":
             p["stack"] = "Stack"   # one series per category: stacking keeps each bar full width (not dodged)
         if viz == "mixed_timeseries":
@@ -314,6 +329,16 @@ def build_params(spec: dict, dataset_id: Optional[int] = None) -> dict:
                 p["seriesTypeB"] = b["kind"]
             if "secondary_axis" in b:
                 p["yAxisIndexB"] = 1 if b["secondary_axis"] else 0
+            if b.get("title"):
+                p["yAxisTitleSecondary"] = b["title"]          # camelCase in the plugin
+            if b.get("format"):
+                p["y_axis_format_secondary"] = b["format"]
+            if "markers" in b:
+                p["markerEnabledB"] = bool(b["markers"])
+            if "stack" in b:
+                p["stackB"] = "Stack" if b["stack"] is True else (None if b["stack"] in (False, None) else b["stack"])
+            if "show_value" in b:
+                p["show_valueB"] = bool(b["show_value"])
         if spec.get("orientation"):
             p["orientation"] = spec["orientation"]
         if "stack" in spec:
@@ -424,6 +449,10 @@ def build_params(spec: dict, dataset_id: Optional[int] = None) -> dict:
     if temporal_col and not any(f.get("operator") == "TEMPORAL_RANGE" for f in filters):
         filters.append(temporal_filter(temporal_col, spec.get("time_range", "No filter")))
     p["adhoc_filters"] = filters
+    if viz == "mixed_timeseries" and temporal_col and \
+            not any(f.get("operator") == "TEMPORAL_RANGE" for f in p.get("adhoc_filters_b", [])):
+        # query B has its own filter list; without this the dashboard time filter reaches only query A
+        p["adhoc_filters_b"] = list(p.get("adhoc_filters_b", [])) + [temporal_filter(temporal_col, spec.get("time_range", "No filter"))]
     if spec.get("time_range") and not temporal_col:
         p["time_range"] = spec["time_range"]
 
@@ -446,9 +475,9 @@ def build_params(spec: dict, dataset_id: Optional[int] = None) -> dict:
     elif isinstance(legend, bool):
         p["show_legend"] = legend
     if spec.get("x_title"):
-        p["x_axis_title"] = spec["x_title"]
+        p["x_axis_label" if viz == "bubble_v2" else "x_axis_title"] = spec["x_title"]
     if spec.get("y_title"):
-        p["y_axis_title"] = spec["y_title"]
+        p["y_axis_label" if viz == "bubble_v2" else "y_axis_title"] = spec["y_title"]
     if spec.get("y_format"):
         for k in ("y_axis_format", "number_format", "valueFormat"):
             if k in p:
@@ -477,8 +506,8 @@ def build_params(spec: dict, dataset_id: Optional[int] = None) -> dict:
                     # Superset's sort post-processing only supports single-series charts: with a
                     # breakdown the categories stay in pivot (alphabetical) order and only the
                     # series/legend order can be sorted ("Sort series by").
-                    p["x_axis_sort_series"] = sort.get("series_by", "sum")   # name|min|max|sum|avg
-                    p["x_axis_sort_series_ascending"] = not sort.get("desc", True)
+                    p["sort_series_type"] = sort.get("series_by", "sum")   # name|min|max|sum|avg
+                    p["sort_series_ascending"] = not sort.get("desc", True)
                     print(f"WARNING: {viz} with groupby {groupby}: categories cannot be sorted by a metric "
                           f"(Superset limitation). Options: drop groupby, or pre-rank the category in a "
                           f"virtual dataset (see references/chart-params.md 'Sorting with breakdowns').",
@@ -492,8 +521,11 @@ def build_params(spec: dict, dataset_id: Optional[int] = None) -> dict:
             else:
                 p["order_desc"] = bool(sort.get("desc", True))
         elif sort.get("x") is not None and viz in XY_TYPES:
-            p["x_axis_sort"] = x
-            p["x_axis_sort_asc"] = str(sort["x"]).lower() != "desc"
+            p["x_axis_sort"] = x if isinstance(x, str) else x.get("label")
+            asc = str(sort["x"]).lower() != "desc"
+            # horizontal bars: ECharts draws the first category at the bottom, so flip to keep
+            # "asc" = first value on top (reading order), like the metric sort above
+            p["x_axis_sort_asc"] = (not asc) if spec.get("orientation") == "horizontal" else asc
 
     # ---- escape hatch ------------------------------------------------------------
     for k, v in (spec.get("extra") or {}).items():
@@ -596,10 +628,25 @@ def build_query_context(params: dict, dataset_id: int, row_limit: Optional[int] 
     if p.get("query_mode") == "raw":
         query["metrics"] = None
         query["orderby"] = [json.loads(o) if isinstance(o, str) else o for o in p.get("order_by_cols", [])]
+    queries = [query]
+    if viz == "mixed_timeseries":  # query B (metrics_b / groupby_b / adhoc_filters_b)
+        qb = copy.deepcopy(query)
+        qb["columns"] = ([_axis_column(p["x_axis"], tg)] if p.get("x_axis") else []) + list(p.get("groupby_b") or [])
+        qb["metrics"] = list(p.get("metrics_b") or [])
+        qb["filters"], qb["extras"] = [], {"having": "", "where": ""}
+        for f in p.get("adhoc_filters_b", []):
+            if f.get("expressionType") == "SQL":
+                key = "having" if f.get("clause") == "HAVING" else "where"
+                qb["extras"][key] = (qb["extras"][key] + " AND " if qb["extras"][key] else "") + f"({f['sqlExpression']})"
+            else:
+                qb["filters"].append({"col": f["subject"], "op": f["operator"], "val": f.get("comparator")})
+        qb["orderby"] = [[qb["metrics"][0], False]] if qb["metrics"] else []
+        qb["row_limit"] = row_limit or p.get("row_limit_b", 10000)
+        queries.append(qb)
     return {
         "datasource": {"id": dataset_id, "type": "table"},
         "force": False,
-        "queries": [query],
+        "queries": queries,
         "form_data": {**p, "datasource": f"{dataset_id}__table", "viz_type": viz, "result_format": "json",
                       "result_type": "full"},
         "result_format": "json",

@@ -45,7 +45,9 @@ async def run(a: argparse.Namespace) -> int:
             await page.fill("#password, input[name=password]", password)
             await page.click("button[type=submit], input[type=submit]")
             await page.wait_for_load_state("networkidle")
-        await page.goto(f"{url}/superset/dashboard/{a.dashboard}/?standalone={a.standalone}")
+        await page.goto(f"{url}/superset/dashboard/{a.dashboard}/?standalone={a.standalone}"
+                        + (f"&{a.query}" if a.query else ""))
+        await page.mouse.move(0, a.height - 1)   # keep hover tooltips ("Click to edit") out of the shot
         await page.wait_for_timeout(a.wait * 1000)
         tabs = await page.locator("[role=tab]").all_inner_texts()
         tabs = [t.strip() for t in tabs if t.strip()]
@@ -84,6 +86,7 @@ def main() -> int:
     ap.add_argument("--wait", type=int, default=10, help="seconds to let charts load")
     ap.add_argument("--standalone", default="1", help="0 shows the Superset nav bar; 1 hides it")
     ap.add_argument("--cookie", help='"session=<value>" to reuse an SSO browser session')
+    ap.add_argument("--query", help="extra URL query, e.g. native_filters=(...) to screenshot a filter state")
     ap.add_argument("--url"), ap.add_argument("--user"), ap.add_argument("--password")
     return asyncio.run(run(ap.parse_args()))
 

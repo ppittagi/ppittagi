@@ -185,7 +185,10 @@ FILTER_TYPES = {"select": "filter_select", "range": "filter_range", "time": "fil
 
 
 def _filter_id(name: str) -> str:
-    return "NATIVE_FILTER-" + re.sub(r"[^A-Za-z0-9]+", "_", name).strip("_") + "-" + _uuid.uuid4().hex[:8]
+    """Deterministic per name, so re-applying a spec keeps filter ids (and users' permalinks) stable."""
+    import hashlib
+    digest = hashlib.md5(name.encode("utf-8")).hexdigest()[:8]
+    return "NATIVE_FILTER-" + re.sub(r"[^A-Za-z0-9]+", "_", name).strip("_") + "-" + digest
 
 
 def build_native_filters(filters: list[dict], dataset_lookup: dict[str, int], all_dataset_keys: list[str],

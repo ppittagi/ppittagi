@@ -23,6 +23,8 @@ raw params, choosing a `viz_type`, and handling types the builder does not templ
 //   "2025-01-01 : 2025-12-31", "DATEADD(DATETIME(\"today\"), -30, day) : today"
 // time_grain_sqla: PT1H P1D P1W P1M P3M P1Y
 // number formats (d3): SMART_NUMBER ",d" ".1f" ".1%" "$,.2f" ; dates: smart_date "%Y-%m-%d" "%b %Y"
+//   Tableau "$300K" style -> "$.3~s" ($300k, $20k, $0 — d3 SI prefix is lower-case; "$.3s" prints $0.00/$20.0k)
+//   "$1.00M" -> "$.3s"; percent of 0.33 -> ".0%"; thousands -> ",d"
 ```
 
 Every chart must carry `"datasource": "<dataset_id>__table"` and `"viz_type"`. A **TEMPORAL_RANGE
@@ -95,9 +97,14 @@ Removed before 7.0 (do not use): `line`, `bar`, `dist_bar`, `area`, `histogram`,
 Horizontal bars sorted by value: `"orientation":"horizontal"`, non-temporal `x_axis` (no
 `time_grain_sqla`), `"x_axis_sort":"<metric label>"`, `"x_axis_sort_asc":false`.
 Categorical x with many series: `"xAxisLabelRotation":45`.
-Value labels on each segment: `"show_value":true,"only_total":false`.
+Value labels on each segment: `"show_value":true,"only_total":false`. A label on a bar that touches the
+top gridline gets clipped: give headroom with `y_bounds: [0, <max*1.1>]` + `extra: {truncateYAxis: true}`.
 
 ### `mixed_timeseries` — bars (A) + line on secondary axis (B)
+Secondary axis keys: `yAxisTitleSecondary` (camelCase), `y_axis_format_secondary`, `y_axis_bounds_secondary`;
+query B: `metrics_b`, `groupby_b`, `adhoc_filters_b` (needs its own TEMPORAL_RANGE filter for the
+dashboard time filter — the builder adds it), `seriesTypeB`, `markerEnabledB`, `stackB`, `show_valueB`.
+Spec: `b: {metrics, kind, secondary_axis, title, format, markers}`.
 ```json
 {"datasource":"12__table","viz_type":"mixed_timeseries","x_axis":"enrolled_date","time_grain_sqla":"P1M",
  "metrics":["n_subjects"],"groupby":[],"seriesType":"bar","stack":null,"yAxisIndex":0,
@@ -150,6 +157,9 @@ Top-N tables (`row_limit: 10`) show a permanent "row limit reached" warning icon
 ```
 
 ### `heatmap_v2`
+Rows are drawn bottom-up: `sort_y_axis: alpha_desc` (template default) puts the first category on top
+like Tableau. Long row labels need `left_margin: <px>` (auto clips). The colour legend is horizontal on
+top only. For a diverging scale centred on 0 set `value_bounds: [-m, m]` with `schemeRdBu`.
 ```json
 {"datasource":"13__table","viz_type":"heatmap_v2","x_axis":"site","groupby":"grade","metric":"ae_count",
  "adhoc_filters":[],"row_limit":10000,"sort_x_axis":"alpha_asc","sort_y_axis":"alpha_asc",
@@ -181,6 +191,11 @@ series colour (not grey). Superset 7.0 always renders a "boxplot / outlier" lege
 use `extra: {x_ticks_layout: "45°"}`.
 
 ### `bubble_v2`
+Axis titles use `x_axis_label` / `y_axis_label` (not `_title`; the builder maps `x_title`/`y_title`).
+Mark size: `(size-min)/(max-min)` is mapped to `[5, 2*max_bubble_size+5]` px, so a *constant* size
+metric gives 5 px dots; for an equal-size scatter give `max_bubble_size` and a size metric that varies,
+or add one dummy row with NULL x/y and size 0 (see Test C notes). No per-mark text labels, no
+annotation layers.
 ```json
 {"datasource":"12__table","viz_type":"bubble_v2","entity":"site","series":"country",
  "x":{"expressionType":"SIMPLE","column":{"column_name":"age"},"aggregate":"AVG","label":"Mean age"},
@@ -225,6 +240,34 @@ stay alphabetical). Negative values work (a negative bar simply points the other
 ECharts draws a horizontal category axis bottom-up, so the first category sits at the bottom. The
 builder flips `x_axis_sort_asc` for `orientation: horizontal`, so `sort: {metric: Sales, desc: true}`
 gives Tableau's largest-on-top in both orientations. When writing raw params, remember to invert.
+
+## Series / stack / legend order
+
+Templates default to `sort_series_type: name`, `sort_series_ascending: true` (alphabetical, like
+Tableau: first series at the bottom of a stack). `sort: {series_by: sum, desc: true}` orders by total.
+(`x_axis_sort_series` is the pre-7.0 key; 7.0 reads `sort_series_type`.)
+
+## Ordered categories (Likert scales, frequency scales)
+
+A category axis is sorted alphabetically or by a metric, never by a hidden order column. For a
+semantic order (Never < Once < … , Strongly Disagree < … < Strongly Agree) prefix the label in the
+virtual dataset with one zero-width space (`char(8203)`) per rank step: invisible on screen, but it
+sorts the labels in the right order. SQLite: `substr(replace(hex(zeroblob(n-1)),'00',char(8203)),1,n-1) || label`;
+PostgreSQL: `repeat(chr(8203), n-1) || label`. Then `sort: {x: asc}` (index sort). The same trick
+orders series/legend entries (stack order) — see `assets/examples/wow-survey.yaml` for a diverging
+Likert bar built this way. Remember `label_colors` keys must then contain the same prefixes.
+
+## Diverging stacked bar (Likert) — no native chart
+
+`echarts_timeseries_bar`, horizontal, `stack: true`, with *signed* values: disagree shares negative,
+agree shares positive, the neutral answer split into two half-size series (one negative, one positive).
+ECharts stacks negatives leftwards, so the bar straddles zero. Value labels show the sign (`-15%`).
+
+## Adhoc metrics cannot contain sub-queries
+
+`chart/data` rejects `COUNT(*) / (SELECT COUNT(*) FROM t)` ("Custom SQL fields cannot contain
+sub-queries"). Put the ratio into the virtual dataset SQL, or use `contributionMode: column` (share of
+the series total across x) / `row` (share within each x across series) on XY charts.
 
 ## Sorting with breakdowns (stacked bars sorted by total)
 
