@@ -1,0 +1,61 @@
+# Parody spec for scripts/render.py. All times are SOURCE times from transcript.json
+# (seconds or "MM:SS"); the renderer shifts them for freezes / slow-mo / the intro card.
+
+mode: dub                    # dub | subtitles (keep original audio, fake subtitles)
+tts: edge                    # edge | gtts | none
+voice: ko-KR-InJoonNeural    # default voice (edge-tts --list-voices)
+rate: "+0%"
+pitch: "+0Hz"
+original_audio: duck         # keep | duck | mute   (subtitles mode defaults to keep)
+duck_volume: 0.15
+voice_volume: 1.4
+max_tempo: 1.5               # max speed-up applied to a TTS line that is too long for its slot
+filter: none                 # none | vintage | noir | vhs | deepfried | warm | cold | <raw ffmpeg filter>
+label: "패러디 · PARODY"       # always keep a visible parody label
+output: parody.mp4           # relative to the work directory
+
+subtitle:
+  font: "Noto Sans KR"       # any installed family (NanumGothic, Malgun Gothic, ...)
+  size: 0                    # 0 = auto (5.8 % of video height)
+  color: "#FFFFFF"
+  outline: "#000000"
+  margin_v: 0                # 0 = auto; raise it if the original has burned-in captions
+
+intro_card:
+  text: "임상시험 DB Lock 하루 전\n실제 상황 재연"
+  duration: 2.5
+  background: "#000000"
+outro_card:
+  text: "원본: <원본 영상 제목> / <채널명>\n이 영상은 패러디입니다"
+  duration: 3
+
+# bgm: {file: ~/music/royalty_free.mp3, volume: 0.15}   # only music you have rights to
+
+lines:
+  - id: 1                               # takes start/end from transcript.json segment 1
+    text: "여러분, DB Lock까지 딱 하루 남았습니다."
+  - id: 2
+    text: "오픈 쿼리가… 몇 개라고요?"
+    voice: ko-KR-SunHiNeural
+    rate: "+20%"
+    pitch: "+30Hz"
+  - start: 7.2                          # explicit timing instead of an id
+    end: 9.0
+    text: "삼백 사십 칠 개요."
+  - id: 4
+    text: "(침묵)"
+    tts: false                          # subtitle only, original audio stays
+  # - id: 5
+  #   text: "제가 직접 녹음한 대사"
+  #   audio: ~/recordings/take5.wav     # use your own recording instead of TTS
+
+effects:
+  - {type: freeze, at: 9.0, duration: 1.8, zoom: 1.25, caption: "그때는 몰랐다… 그게 시작이었다는 걸"}
+  - {type: sfx, at: 9.0, sound: dramatic}
+  - {type: zoom, start: 10.0, end: 11.5, scale: 1.7, x: 0.5, y: 0.35}
+  - {type: shake, start: 12.0, end: 13.0}
+  - {type: sfx, at: 12.0, sound: boing}
+  - {type: slowmo, start: 14.0, end: 15.5, factor: 0.5, caption: "슬로우 모션으로 다시 보기"}
+  - {type: caption, start: 16.0, end: 18.0, text: "한편, 모니터링 요원은…", position: top}
+  - {type: bleep, start: 18.5, end: 19.0}
+  - {type: sfx, at: 20.0, sound: sad_trombone}

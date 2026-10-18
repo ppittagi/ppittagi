@@ -1,0 +1,5 @@
+yt-dlp
+edge-tts
+faster-whisper
+pyyaml
+# optional: gTTS (tts: gtts)
