@@ -1,0 +1,26 @@
+{
+  "code": "US-GE-LOGIQE9-960x720",
+  "name": "GE LOGIQ E9 초음파 960x720 상단 정보 바",
+  "shared": true,
+  "spec": {
+    "kind": "REDACT",
+    "priority": 100,
+    "match": {
+      "all": [
+        { "tag": "Modality", "op": "eq", "value": "US" },
+        { "tag": "Manufacturer", "op": "icontains", "value": "GE" },
+        { "tag": "ManufacturerModelName", "op": "regex", "value": "^LOGIQ\\s?E9$" },
+        { "tag": "Rows", "op": "eq", "value": 720 },
+        { "tag": "Columns", "op": "eq", "value": 960 }
+      ],
+      "any": [],
+      "none": []
+    },
+    "regions": [
+      { "x": 0, "y": 0, "w": 338, "h": 67, "label": "기관명, 검사 일시, 검사자 이니셜" },
+      { "x": 338, "y": 0, "w": 331, "h": 67, "label": "환자 이름, 환자 번호" }
+    ],
+    "frames": "ALL",
+    "fill": { "mode": "CONSTANT" }
+  }
+}

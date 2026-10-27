@@ -1,0 +1,10 @@
+# Runtime data holds original images and re-identification keys: never commit it.
+data/
+*.sqlite
+*.key
+# Real DICOM samples must not enter the repository; tests generate synthetic files.
+*.dcm
+*.zip
+*.png
+.pytest_cache/
+*.egg-info/
