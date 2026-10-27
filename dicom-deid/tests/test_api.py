@@ -60,3 +60,8 @@ def test_errors_are_structured(client, sample_template):
     r = client.get(BASE + "/quarantine", headers={"X-User": "x", "X-Roles": "ADMIN"})
     assert r.status_code == 403 and r.json()["code"] == "UNKNOWN_ROLE"
     assert client.get(BASE + "/quarantine", headers=UPLOADER).status_code == 403
+
+
+def test_test_console_is_served(client):
+    r = client.get("/")
+    assert r.status_code == 200 and "DICOM 비식별화 테스트" in r.text

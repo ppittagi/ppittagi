@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from . import service
@@ -22,6 +22,13 @@ from .store import Store
 
 app = FastAPI(title="DICOM de-identification", version="1.0.0")
 PREFIX = "/api/v1/studies/{study_id}"
+WEB_DIR = Path(__file__).parent / "web"
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def test_console() -> str:
+    """Single-page test console for development (uses the same header auth)."""
+    return (WEB_DIR / "index.html").read_text(encoding="utf-8")
 
 
 @lru_cache(maxsize=1)

@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DICOM 비식별화 테스트</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #fff; --ink: #1d2433; --muted: #5b6475; --line: #dde1e8;
+    --accent: #2563eb; --accent-ink: #fff; --good: #15803d; --warn: #b45309; --bad: #b91c1c; --chip: #eef1f6;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; background: var(--bg); color: var(--ink); }
+  header { background: var(--panel); border-bottom: 1px solid var(--line); padding: 12px 20px; display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; }
+  header h1 { font-size: 16px; margin: 0 16px 0 0; }
+  header label { color: var(--muted); font-size: 12px; display: flex; gap: 6px; align-items: center; }
+  .roles { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+  .roles label { color: var(--ink); font-size: 12px; }
+  nav { display: flex; gap: 4px; padding: 0 20px; background: var(--panel); border-bottom: 1px solid var(--line); overflow-x: auto; }
+  nav button { border: 0; background: none; padding: 10px 14px; font: inherit; color: var(--muted); border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; }
+  nav button.on { color: var(--ink); border-color: var(--accent); font-weight: 600; }
+  main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+  section { display: none; } section.on { display: block; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 16px; overflow-x: auto; }
+  .card h2 { font-size: 15px; margin: 0 0 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+  .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  input[type=text], input:not([type]), select, textarea { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); }
+  textarea { width: 100%; min-height: 220px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  button.btn { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.danger { color: var(--bad); }
+  button:disabled { opacity: .5; cursor: default; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; background: var(--chip); }
+  .DONE, .APPROVED, .COMPLETED, .MATCHED { color: var(--good); background: #e8f5ec; }
+  .QUARANTINED, .IN_REVIEW, .COMPLETED_WITH_QUARANTINE, .AMBIGUOUS, .NO_TEMPLATE { color: var(--warn); background: #fdf3e3; }
+  .REJECTED, .FAILED, .RETIRED, .COMPLETED_WITH_ERRORS { color: var(--bad); background: #fbeaea; }
+  .counts { display: flex; gap: 16px; flex-wrap: wrap; margin: 8px 0 12px; }
+  .counts div { background: var(--chip); border-radius: 6px; padding: 6px 12px; }
+  .counts b { font-size: 18px; display: block; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+  .compare figure { margin: 0; } .compare figcaption { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .compare img { width: 100%; border: 1px solid var(--line); border-radius: 4px; background: #000; }
+  .compare .denied { padding: 40px 12px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 4px; font-size: 12px; }
+  pre { background: #f2f4f7; padding: 10px; border-radius: 6px; overflow: auto; font-size: 12px; max-height: 360px; }
+  .muted { color: var(--muted); font-size: 12px; }
+  #toast { position: fixed; right: 20px; bottom: 20px; max-width: 420px; padding: 10px 14px; border-radius: 6px; background: var(--ink); color: #fff; display: none; white-space: pre-wrap; }
+  #toast.err { background: var(--bad); }
+  @media (max-width: 720px) { .compare { grid-template-columns: 1fr; } main { padding: 12px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>DICOM 비식별화 테스트</h1>
+  <label>사용자 <input id="user" value="tester" size="10"></label>
+  <label>시험 <input id="study" value="STUDY001" size="10"></label>
+  <div class="roles" id="roles"></div>
+</header>
+<nav id="tabs">
+  <button data-tab="upload" class="on">업로드·결과</button>
+  <button data-tab="quarantine">검토 대기</button>
+  <button data-tab="templates">템플릿</button>
+  <button data-tab="audit">감사추적</button>
+</nav>
+<main>
+  <section id="upload" class="on">
+    <div class="card">
+      <h2>파일 업로드</h2>
+      <form id="uploadForm" class="row">
+        <div class="field">기관 (site_id)<input name="site_id" value="S01" required></div>
+        <div class="field">대상자 (subject_no)<input name="subject_no" value="S-01-0001" required></div>
+        <div class="field">DCM 또는 ZIP<input type="file" name="file" required></div>
+        <button class="btn primary" type="submit">업로드</button>
+      </form>
+      <p class="muted">업로드에는 SITE_UPLOADER, 결과 목록·다운로드에는 DM, 리댁션 전 이미지에는 DEID_REVIEWER 역할이 필요합니다.</p>
+    </div>
+    <div class="card">
+      <h2>처리 결과 <span class="muted" id="jobLabel"></span></h2>
+      <div class="row"><div class="field">Job 번호<input id="jobId" size="6"></div><button class="btn" id="loadJob">조회</button></div>
+      <div id="jobView"></div>
+    </div>
+  </section>
+
+  <section id="quarantine">
+    <div class="card">
+      <h2>검토 대기 (Quarantine) <button class="btn" id="loadQ">새로고침</button></h2>
+      <p class="muted">DEID_REVIEWER 역할이 필요합니다. 재처리 때 템플릿 버전을 고르지 않으면 승인된 템플릿으로 다시 매칭합니다.</p>
+      <div id="qView"></div>
+    </div>
+  </section>
+
+  <section id="templates">
+    <div class="card">
+      <h2>템플릿 목록 <button class="btn" id="loadT">새로고침</button></h2>
+      <p class="muted">작성자(TEMPLATE_AUTHOR)가 샘플 3건 이상 드라이런 후 제출하면, 다른 사용자(TEMPLATE_APPROVER)가 승인합니다. 승인할 때는 상단 사용자 이름을 바꾸세요.</p>
+      <div id="tView"></div>
+    </div>
+    <div class="card">
+      <h2>매칭 테스트</h2>
+      <div class="row"><div class="field">DCM<input type="file" id="mtFile"></div><button class="btn" id="mtRun">어떤 템플릿이 적용되나</button></div>
+      <div id="mtView"></div>
+    </div>
+    <div class="card">
+      <h2>새 템플릿</h2>
+      <textarea id="tJson"></textarea>
+      <div class="row" style="margin-top:8px"><label class="muted"><input type="checkbox" id="tShared" checked> 전 시험 공용</label><button class="btn primary" id="tCreate">등록 (Draft)</button></div>
+    </div>
+  </section>
+
+  <section id="audit">
+    <div class="card">
+      <h2>감사추적 <button class="btn" id="loadA">새로고침</button> <span id="chain"></span></h2>
+      <p class="muted">QA 역할이 필요합니다.</p>
+      <div id="aView"></div>
+    </div>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+const ROLES = ["SITE_UPLOADER", "DM", "DEID_REVIEWER", "TEMPLATE_AUTHOR", "TEMPLATE_APPROVER", "QA"];
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const badge = (s) => `<span class="badge ${esc(s)}">${esc(s ?? "-")}</span>`;
+
+function load(key, fallback) { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } }
+function save(key, value) { try { localStorage.setItem(key, value); } catch {} }
+
+const saved = new Set(load("roles", ROLES.join(",")).split(",").filter(Boolean));
+$("#roles").innerHTML = ROLES.map((r) => `<label><input type="checkbox" value="${r}" ${saved.has(r) ? "checked" : ""}>${r}</label>`).join("");
+$("#user").value = load("user", "tester");
+$("#study").value = load("study", "STUDY001");
+$("#roles").addEventListener("change", () => save("roles", roles().join(",")));
+$("#user").addEventListener("change", () => save("user", $("#user").value));
+$("#study").addEventListener("change", () => save("study", $("#study").value));
+
+const roles = () => [...document.querySelectorAll("#roles input:checked")].map((i) => i.value);
+const base = () => `/api/v1/studies/${encodeURIComponent($("#study").value.trim())}`;
+const headers = () => ({"X-User": $("#user").value.trim() || "tester", "X-Roles": roles().join(",")});
+
+function toast(msg, err = false) {
+  const t = $("#toast"); t.textContent = msg; t.className = err ? "err" : ""; t.style.display = "block";
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => (t.style.display = "none"), 4500);
+}
+
+async function api(path, {method = "GET", json, form} = {}) {
+  const opts = {method, headers: headers()};
+  if (json) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(json); }
+  if (form) opts.body = form;
+  const res = await fetch(path, opts);
+  const body = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
+  if (!res.ok) {
+    const msg = body?.code ? `${body.code}: ${body.message}` : `HTTP ${res.status} ${JSON.stringify(body?.detail ?? "")}`;
+    toast(msg, true); throw new Error(msg);
+  }
+  return body;
+}
+
+async function blobUrl(path) {
+  const res = await fetch(path, {headers: headers()});
+  if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.code || res.status); }
+  return URL.createObjectURL(await res.blob());
+}
+
+async function figure(caption, path) {
+  try { return `<figure><figcaption>${esc(caption)}</figcaption><img src="${await blobUrl(path)}" alt="${esc(caption)}"></figure>`; }
+  catch (e) { return `<figure><figcaption>${esc(caption)}</figcaption><div class="denied">볼 수 없음 (${esc(e.message)})</div></figure>`; }
+}
+
+document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll("#tabs button, main section").forEach((x) => x.classList.remove("on"));
+  b.classList.add("on"); $("#" + b.dataset.tab).classList.add("on");
+  ({quarantine: loadQuarantine, templates: loadTemplates, audit: loadAudit})[b.dataset.tab]?.();
+}));
+
+// --- upload & results ---
+$("#uploadForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = e.submitter; btn.disabled = true;
+  try {
+    const job = await api(base() + "/jobs", {method: "POST", form: new FormData(e.target)});
+    $("#jobId").value = job.jobId; toast(`Job ${job.jobId} 접수, 처리 중…`);
+    await pollJob(job.jobId);
+  } finally { btn.disabled = false; }
+});
+$("#loadJob").addEventListener("click", () => pollJob($("#jobId").value));
+
+async function pollJob(id) {
+  for (let i = 0; i < 600; i++) {
+    const job = await api(`${base()}/jobs/${id}`);
+    renderJob(job);
+    if (job.status.startsWith("COMPLETED")) return loadItems(id);
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
+function renderJob(job) {
+  const c = job.counts;
+  $("#jobLabel").textContent = `Job ${job.jobId} · ${job.subjectNo}`;
+  $("#jobView").innerHTML = `<p>${badge(job.status)}</p>
+    <div class="counts"><div><b>${c.total}</b>전체</div><div><b>${c.done}</b>완료</div><div><b>${c.quarantined}</b>검토 대기</div>
+    <div><b>${c.rejected}</b>거부</div><div><b>${c.failed}</b>실패</div><div><b>${c.pending}</b>대기</div></div>
+    ${Object.keys(job.reasons).length ? `<p class="muted">사유: ${Object.entries(job.reasons).map(([k, v]) => `${esc(k)} ${v}건`).join(", ")}</p>` : ""}
+    <div id="items"></div><div id="compare"></div>`;
+}
+
+async function loadItems(jobId) {
+  const items = await api(`${base()}/jobs/${jobId}/items`);
+  $("#items").innerHTML = `<table><tr><th>#</th><th>상태</th><th>사유</th><th>템플릿 버전</th><th>SOP Class</th><th></th></tr>
+    ${items.map((it) => `<tr><td>${it.id}</td><td>${badge(it.status)}</td><td>${esc(it.reason_code ?? "")}</td><td>${esc(it.template_version_id ?? "")}</td>
+      <td class="muted">${esc(it.sop_class_uid ?? "")}</td>
+      <td>${it.hasDeidFile ? `<button class="btn" data-cmp="${it.id}">전/후 비교</button> <button class="btn" data-dl="${it.id}">다운로드</button>` : ""}</td></tr>`).join("")}</table>`;
+  $("#items").querySelectorAll("[data-cmp]").forEach((b) => b.addEventListener("click", () => compare(b.dataset.cmp)));
+  $("#items").querySelectorAll("[data-dl]").forEach((b) => b.addEventListener("click", () => download(b.dataset.dl)));
+}
+
+async function compare(id) {
+  $("#compare").innerHTML = `<p class="muted">#${id} 불러오는 중…</p>`;
+  const [before, after] = await Promise.all([
+    figure(`#${id} 리댁션 전 (DEID_REVIEWER)`, `${base()}/items/${id}/preview?stage=before`),
+    figure(`#${id} 리댁션 후`, `${base()}/items/${id}/preview?stage=after`),
+  ]);
+  $("#compare").innerHTML = `<div class="compare">${before}${after}</div>`;
+  $("#compare").scrollIntoView({behavior: "smooth", block: "nearest"});
+}
+
+async function download(id) {
+  try {
+    const a = document.createElement("a"); a.href = await blobUrl(`${base()}/items/${id}/download`);
+    a.download = `item-${id}.dcm`; a.click();
+  } catch (e) { toast(`다운로드 실패: ${e.message}`, true); }
+}
+
+// --- quarantine ---
+$("#loadQ").addEventListener("click", () => loadQuarantine());
+async function approvedVersions() {
+  try {
+    const ts = await api(base() + "/templates");
+    return ts.flatMap((t) => t.versions.filter((v) => v.status === "APPROVED").map((v) => ({id: v.versionId, label: `${t.code} v${v.version}`})));
+  } catch { return []; }
+}
+async function loadQuarantine() {
+  const [items, versions] = await Promise.all([api(base() + "/quarantine"), approvedVersions()]);
+  if (!items.length) { $("#qView").innerHTML = `<p class="muted">검토 대기 건이 없습니다.</p>`; return; }
+  const opts = `<option value="">자동 매칭</option>` + versions.map((v) => `<option value="${v.id}">${esc(v.label)}</option>`).join("");
+  $("#qView").innerHTML = `<table><tr><th>#</th><th>Job</th><th>사유</th><th>매칭 기록</th><th>조치</th></tr>
+    ${items.map((it) => `<tr><td>${it.id}</td><td>${it.job_id}</td><td>${badge(it.reason_code)}</td>
+      <td><details><summary class="muted">보기</summary><pre>${esc(JSON.stringify(it.trace?.match ?? it.trace, null, 2))}</pre></details></td>
+      <td><div class="row"><input placeholder="사유 (필수)" data-c="${it.id}"><select data-v="${it.id}">${opts}</select>
+      <button class="btn" data-rp="${it.id}">재처리</button><button class="btn danger" data-rj="${it.id}">거부</button></div></td></tr>`).join("")}</table>`;
+  const comment = (id) => $(`[data-c="${id}"]`).value;
+  $("#qView").querySelectorAll("[data-rp]").forEach((b) => b.addEventListener("click", async () => {
+    const id = b.dataset.rp, v = $(`[data-v="${id}"]`).value;
+    const r = await api(`${base()}/quarantine/${id}/reprocess`, {method: "POST", json: {comment: comment(id), templateVersionId: v ? Number(v) : null}});
+    toast(`#${id} 재처리 결과: ${r.status} ${r.reason_code ?? ""}`); loadQuarantine();
+  }));
+  $("#qView").querySelectorAll("[data-rj]").forEach((b) => b.addEventListener("click", async () => {
+    const id = b.dataset.rj;
+    await api(`${base()}/quarantine/${id}/reject`, {method: "POST", json: {comment: comment(id)}});
+    toast(`#${id} 거부 처리`); loadQuarantine();
+  }));
+}
+
+// --- templates ---
+$("#loadT").addEventListener("click", () => loadTemplates());
+async function loadTemplates() {
+  const ts = await api(base() + "/templates");
+  if (!ts.length) { $("#tView").innerHTML = `<p class="muted">템플릿이 없습니다.</p>`; return; }
+  $("#tView").innerHTML = ts.map((t) => `<div class="card"><h2>${esc(t.code)} <span class="muted">${esc(t.name)} · ${t.studyId ? esc(t.studyId) : "공용"} · ${esc(t.kind)}</span></h2>
+    <table><tr><th>버전</th><th>상태</th><th>작성</th><th>승인</th><th>샘플</th><th>영역</th><th>조치</th></tr>
+    ${t.versions.map((v) => `<tr><td>v${v.version}</td><td>${badge(v.status)}</td><td>${esc(v.createdBy)}</td><td>${esc(v.approvedBy ?? "")}</td>
+      <td>${v.matchedSamples ?? 0}</td><td class="muted">${v.spec.regions.map((r) => `${r.x},${r.y} ${r.w}×${r.h}`).join("<br>")}</td>
+      <td><div class="row">
+        ${v.status === "DRAFT" ? `<input type="file" data-dr="${t.templateId}:${v.version}"><button class="btn" data-sub="${t.templateId}:${v.version}">제출</button>` : ""}
+        ${v.status === "IN_REVIEW" ? `<button class="btn primary" data-ap="${t.templateId}:${v.version}">승인</button>` : ""}
+        ${v.status === "APPROVED" ? `<button class="btn danger" data-rt="${t.templateId}:${v.version}">폐기</button>` : ""}
+      </div></td></tr>`).join("")}</table><div data-drv="${t.templateId}"></div></div>`).join("");
+  const split = (s) => s.split(":");
+  $("#tView").querySelectorAll("[data-dr]").forEach((inp) => inp.addEventListener("change", async () => {
+    const [tid, ver] = split(inp.dataset.dr), fd = new FormData(); fd.append("file", inp.files[0]);
+    const r = await api(`${base()}/templates/${tid}/versions/${ver}/dry-run`, {method: "POST", form: fd});
+    const box = $(`[data-drv="${tid}"]`);
+    if (!r.matched) { box.innerHTML = `<p>${badge("NO_TEMPLATE")} 이 샘플은 매칭되지 않았습니다.</p><pre>${esc(JSON.stringify(r.trace, null, 2))}</pre>`; return; }
+    const [b, a] = await Promise.all([figure("드라이런: 리댁션 전", `${base()}/template-samples/${r.sampleId}/preview?stage=before`),
+                                      figure("드라이런: 리댁션 후", `${base()}/template-samples/${r.sampleId}/preview?stage=after`)]);
+    box.innerHTML = `<p>${badge("MATCHED")} 점수 ${r.score} · 바뀐 픽셀 ${r.pixel?.pixelsChanged ?? 0}</p><div class="compare">${b}${a}</div>`;
+    loadTemplatesKeep(box);
+  }));
+  const act = (sel, path, body, msg) => $("#tView").querySelectorAll(sel).forEach((b) => b.addEventListener("click", async () => {
+    const [tid, ver] = split(b.dataset[Object.keys(b.dataset)[0]]);
+    await api(`${base()}/templates/${tid}/versions/${ver}/${path}`, {method: "POST", json: body()});
+    toast(msg); loadTemplates();
+  }));
+  act("[data-sub]", "submit", () => ({reason: "드라이런 확인 완료"}), "제출했습니다");
+  act("[data-ap]", "approve", () => ({meaning: "승인함", reason: "드라이런 결과 검토"}), "승인했습니다");
+  act("[data-rt]", "retire", () => ({reason: "테스트 화면에서 폐기"}), "폐기했습니다");
+}
+async function loadTemplatesKeep(box) {
+  // refresh the sample counts without wiping the dry-run preview
+  const html = box.innerHTML, tid = box.dataset.drv;
+  await loadTemplates(); $(`[data-drv="${tid}"]`).innerHTML = html;
+}
+
+$("#mtRun").addEventListener("click", async () => {
+  const f = $("#mtFile").files[0]; if (!f) return toast("파일을 선택하세요", true);
+  const fd = new FormData(); fd.append("file", f);
+  const r = await api(base() + "/templates/match-test", {method: "POST", form: fd});
+  $("#mtView").innerHTML = `<p>${badge(r.status)} ${r.selected ? `${esc(r.selected.templateCode)} v${r.selected.version} (점수 ${r.selected.score})` : ""}</p><pre>${esc(JSON.stringify(r, null, 2))}</pre>`;
+});
+
+$("#tJson").value = JSON.stringify({
+  code: "US-NEW-DEVICE", name: "새 장비 템플릿",
+  spec: {kind: "REDACT", priority: 100,
+    match: {all: [{tag: "Modality", op: "eq", value: "US"}, {tag: "ManufacturerModelName", op: "eq", value: "MODEL"},
+                  {tag: "Rows", op: "eq", value: 720}, {tag: "Columns", op: "eq", value: 960}], any: [], none: []},
+    regions: [{x: 0, y: 0, w: 669, h: 67, label: "상단 정보 바"}], frames: "ALL", fill: {mode: "CONSTANT"}},
+}, null, 2);
+$("#tCreate").addEventListener("click", async () => {
+  let body; try { body = JSON.parse($("#tJson").value); } catch (e) { return toast("JSON 형식 오류: " + e.message, true); }
+  await api(base() + "/templates", {method: "POST", json: {...body, shared: $("#tShared").checked, reason: "테스트 화면에서 등록"}});
+  toast("등록했습니다 (Draft)"); loadTemplates();
+});
+
+// --- audit ---
+$("#loadA").addEventListener("click", () => loadAudit());
+async function loadAudit() {
+  const r = await api("/api/v1/audit");
+  $("#chain").innerHTML = r.chainValid ? badge("COMPLETED").replace("COMPLETED</", "해시 체인 정상</") : `<span class="badge FAILED">체인 손상 #${r.firstBrokenId}</span>`;
+  $("#aView").innerHTML = `<table><tr><th>시각 (UTC)</th><th>사용자</th><th>동작</th><th>대상</th><th>사유</th><th>내용</th></tr>
+    ${r.entries.slice().reverse().map((e) => `<tr><td class="muted">${esc(e.occurred_at)}</td><td>${esc(e.actor)}</td><td>${esc(e.action)}</td>
+      <td>${esc(e.entity_type)} #${esc(e.entity_id)}</td><td>${esc(e.reason ?? "")}</td>
+      <td>${e.after_json ? `<details><summary class="muted">보기</summary><pre>${esc(JSON.stringify(e.after_json, null, 2))}</pre></details>` : ""}</td></tr>`).join("")}</table>`;
+}
+</script>
+</body>
+</html>

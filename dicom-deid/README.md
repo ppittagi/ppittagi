@@ -23,8 +23,22 @@ deid --user approver1 template approve US-GE-LOGIQE9-960x720
 deid --user site1 process exam.zip --study STUDY001 --site S01 --subject S-01-0001
 
 # 3) API 서버
-uvicorn deid.api:app --port 8000     # /docs 에 OpenAPI 화면
+uvicorn deid.api:app --port 8000
 ```
+
+## 테스트 화면
+
+서버를 띄운 뒤 브라우저에서 `http://localhost:8000/` 을 엽니다. API 명세는 `http://localhost:8000/docs` 에 있습니다.
+
+| 탭 | 할 수 있는 일 | 필요한 역할 |
+| --- | --- | --- |
+| 업로드·결과 | DCM/ZIP 업로드, 진행 상황, 파일별 결과, 리댁션 전/후 비교, 다운로드 | SITE_UPLOADER, DM (전 이미지는 DEID_REVIEWER) |
+| 검토 대기 | 사유와 매칭 기록 확인, 템플릿 지정 재처리, 거부 | DEID_REVIEWER |
+| 템플릿 | 목록·버전 상태, 드라이런(전/후 미리보기), 제출·승인·폐기, 매칭 테스트, JSON으로 새 템플릿 등록 | TEMPLATE_AUTHOR, TEMPLATE_APPROVER |
+| 감사추적 | 전체 기록과 해시 체인 검증 결과 | QA |
+
+상단에서 사용자 이름과 역할을 고르면 그 값이 `X-User`, `X-Roles` 헤더로 전송됩니다. 작성자와 승인자는 이름이 달라야 하므로 승인 전에 사용자 이름을 바꾸세요.
+개발용 화면이므로 인터넷에 공개된 주소로 띄우지 마세요. 인증이 헤더 값을 그대로 믿습니다.
 
 테스트: `python -m pytest` (74건). 테스트는 코드로 만든 합성 DICOM과 카나리 문자열만 사용합니다.
 
